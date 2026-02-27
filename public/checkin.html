@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitAI - Check-in de Assinatura</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <header class="topbar glass">
+    <div class="brand">💳 FitAI Check-in (Pagamento)</div>
+    <div class="top-actions">
+      <button id="theme-toggle" class="btn ghost">🌙 Dark</button>
+      <a href="/" class="btn">Voltar</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card glass">
+      <h1>Ative ou altere seu plano</h1>
+      <p>
+        Esta é a página de <strong>check-in de assinatura</strong>. Aqui você simula o pagamento e
+        ativa o plano para liberar o sistema completo.
+      </p>
+
+      <div class="pricing-grid">
+        <article class="card glass plan">
+          <h3>Plano Performance 12M</h3>
+          <div class="price">R$99<span>/mês</span></div>
+          <ul>
+            <li>12 meses de acesso</li>
+            <li>Treinos ilimitados</li>
+            <li>Ajuste automático semanal</li>
+            <li>Exportação em PDF</li>
+          </ul>
+          <button id="buy-12m" class="btn neon">Confirmar pagamento 12M</button>
+        </article>
+
+        <article class="card glass plan">
+          <h3>Plano Focus 6M</h3>
+          <div class="price">R$119<span>/mês</span></div>
+          <ul>
+            <li>6 meses de acesso</li>
+            <li>Treinos ilimitados</li>
+            <li>Ajuste automático semanal</li>
+            <li>Exportação em PDF</li>
+          </ul>
+          <button id="buy-6m" class="btn">Confirmar pagamento 6M</button>
+        </article>
+      </div>
+
+      <p id="msg" class="msg"></p>
+      <div id="status" class="day hidden"></div>
+    </section>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('fitai_token');
+    const msg = document.getElementById('msg');
+    const statusBox = document.getElementById('status');
+
+    function setMsg(text, error = false) {
+      msg.textContent = text;
+      msg.style.color = error ? '#ff6b6b' : 'var(--accent)';
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('fitai_theme', theme);
+      document.getElementById('theme-toggle').textContent = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+    }
+
+    const savedTheme = localStorage.getItem('fitai_theme') || 'light';
+    applyTheme(savedTheme);
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    });
+
+    async function refreshStatus() {
+      if (!token) {
+        setMsg('Você precisa entrar antes de confirmar pagamento.', true);
+        return;
+      }
+
+      const res = await fetch('/api/me', { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        setMsg('Sessão inválida. Faça login novamente.', true);
+        return;
+      }
+
+      const data = await res.json();
+      const sub = data.subscription;
+      statusBox.classList.remove('hidden');
+
+      if (!sub || sub.status !== 'active') {
+        statusBox.innerHTML = '<strong>Status:</strong> sem assinatura ativa.';
+        return;
+      }
+
+      const label = sub.package_code === 'plan_12m' ? '12 meses (R$99/mês)' : '6 meses (R$119/mês)';
+      const end = sub.ends_at ? new Date(sub.ends_at).toLocaleDateString('pt-BR') : '—';
+      statusBox.innerHTML = `<strong>Status:</strong> ativo<br/><small>Plano: ${label} • válido até ${end}</small>`;
+    }
+
+    async function mockCheckout(packageCode) {
+      if (!token) return setMsg('Você precisa entrar antes de confirmar pagamento.', true);
+
+      setMsg('Processando pagamento simulado...');
+      const res = await fetch('/api/billing/mock-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ packageCode })
+      });
+
+      const data = await res.json();
+      if (!res.ok) return setMsg(data.error || 'Falha no pagamento simulado.', true);
+
+      setMsg('Pagamento simulado aprovado! Assinatura ativada com sucesso.');
+      await refreshStatus();
+    }
+
+    document.getElementById('buy-12m').addEventListener('click', () => mockCheckout('plan_12m'));
+    document.getElementById('buy-6m').addEventListener('click', () => mockCheckout('plan_6m'));
+
+    refreshStatus();
+  </script>
+</body>
+</html>
