@@ -110,6 +110,7 @@ p { color: var(--muted); }
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+  margin-top: 15px;
 }
 .feature h3 { margin-bottom: 6px; }
 
