@@ -6,250 +6,77 @@
   <title>FitAI Planner</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body data-page="home">
   <div class="bg-glow"></div>
 
   <header class="topbar glass">
-    <div class="brand">⚡ FitAI Planner</div>
+    <a href="/" class="brand brand-link">⚡ FitAI Planner</a>
     <div class="top-actions">
       <button id="theme-toggle" class="btn ghost">🌙 Dark</button>
-      <button id="btn-logout" class="btn ghost hidden">Sair</button>
+      <a href="/login.html" class="btn">Entrar</a>
     </div>
   </header>
 
   <main class="container">
-    <section id="landing-section" class="landing">
+    <section class="landing">
       <div class="hero glass">
         <div class="hero-copy">
           <span class="badge">SaaS Fitness com IA</span>
           <h1>Seu treino perfeito, atualizado toda semana.</h1>
-          <p>
-            O FitAI Planner cria um plano personalizado para seu objetivo e ajusta automaticamente
-            com base no seu progresso. Menos dúvida, mais resultado.
-          </p>
+          <p>O FitAI Planner cria um plano personalizado para seu objetivo e ajusta automaticamente com base no seu progresso. Menos dúvida, mais resultado.</p>
           <div class="hero-actions">
-            <button id="btn-open-auth" class="btn">Criar conta grátis</button>
-            <button id="btn-open-login" class="btn">Entrar na sua conta</button>
+            <a href="/register.html" class="btn">Criar conta grátis</a>
+            <a href="/login.html" class="btn">Entrar na sua conta</a>
             <a href="/checkin.html" class="btn cta">Assinar plano</a>
           </div>
         </div>
-        <img
-          class="hero-img"
-          src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80"
-          alt="Pessoa treinando na academia"
-        />
+        <img class="hero-img" src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80" alt="Pessoa treinando" />
       </div>
 
       <div class="features-grid">
-        <article class="card glass feature">
-          <h3>Plano Inteligente</h3>
-          <p>Treino gerado por objetivo, nível, tempo e equipamentos disponíveis.</p>
-        </article>
-        <article class="card glass feature">
-          <h3>Progressão Automática</h3>
-          <p>Check-in semanal para ajustar carga, volume e intensidade com segurança.</p>
-        </article>
-        <article class="card glass feature">
-          <h3>Dashboard Claro</h3>
-          <p>Visual simples com divisão semanal, séries, repetições e observações.</p>
-        </article>
+        <article class="card glass feature"><h3>Plano Inteligente</h3><p>Treino gerado por objetivo, nível, tempo e equipamentos disponíveis.</p></article>
+        <article class="card glass feature"><h3>Progressão Automática</h3><p>Check-in semanal para ajustar carga, volume e intensidade com segurança.</p></article>
+        <article class="card glass feature"><h3>Dashboard Claro</h3><p>Visual simples com divisão semanal, séries, repetições e observações.</p></article>
       </div>
+
+      <section class="image-strip">
+        <img src="https://images.unsplash.com/photo-1549060279-7e168fcee0c2?auto=format&fit=crop&w=900&q=80" alt="Treino de força" />
+        <img src="https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80" alt="Treino funcional" />
+      </section>
 
       <section class="pricing">
         <h2>Escolha seu plano e destrave seu próximo nível</h2>
         <p>Sem plano ativo, o sistema fica bloqueado. Com plano ativo, você libera treino ilimitado, ajustes semanais e PDF.</p>
-        <div class="pricing-grid">
+        <div class="pricing-grid pricing-grid-3">
           <article class="card glass plan">
             <h3>Plano Performance 12M</h3>
             <div class="price">R$99<span>/mês</span></div>
-            <ul>
-              <li>12 meses de acesso</li>
-              <li>Treinos ilimitados</li>
-              <li>Ajuste automático semanal</li>
-              <li>Exportação em PDF</li>
-            </ul>
-            <button class="btn cta" onclick="document.getElementById('btn-open-login').click()">Entrar para gerenciar plano</button>
+            <ul><li>12 meses de acesso</li><li>Treinos ilimitados</li><li>Ajuste automático semanal</li><li>Exportação em PDF</li></ul>
+            <a href="/login.html" class="btn cta">Entrar para gerenciar plano</a>
           </article>
           <article class="card glass plan">
             <h3>Plano Focus 6M</h3>
             <div class="price">R$119<span>/mês</span></div>
-            <ul>
-              <li>6 meses de acesso</li>
-              <li>Treinos ilimitados</li>
-              <li>Ajuste automático semanal</li>
-              <li>Exportação em PDF</li>
-            </ul>
-            <button class="btn" onclick="document.getElementById('btn-open-login').click()">Entrar para gerenciar plano</button>
+            <ul><li>6 meses de acesso</li><li>Treinos ilimitados</li><li>Ajuste automático semanal</li><li>Exportação em PDF</li></ul>
+            <a href="/login.html" class="btn">Entrar para gerenciar plano</a>
+          </article>
+          <article class="card glass plan">
+            <h3>Plano FitAI Super</h3>
+            <div class="price">R$149<span>/mês</span></div>
+            <ul><li>Tudo dos planos de treino</li><li>Plano alimentar com calorias e macros</li><li>Ajuste por rotina alimentar e restrições</li><li>Área de dieta no app</li></ul>
+            <a href="/login.html" class="btn neon">Quero o Super</a>
           </article>
         </div>
-      </section>
-
-      <section class="features-grid">
-        <article class="card glass feature">
-          <h3>Biblioteca inteligente</h3>
-          <p>Exercícios adaptados para academia ou casa com foco no seu objetivo.</p>
-        </article>
-        <article class="card glass feature">
-          <h3>Experiência premium</h3>
-          <p>Design moderno, tema claro/escuro e uso confortável no celular.</p>
-        </article>
-        <article class="card glass feature">
-          <h3>Evolução mensurável</h3>
-          <p>Acompanhe consistência, progresso e ajustes semanais do plano.</p>
-        </article>
       </section>
 
       <section class="social-proof">
         <h2>Resultados que falam por si</h2>
         <div class="testimonials">
-          <article class="card glass">
-            <p>“Em 4 semanas parei de perder tempo na academia. O plano ficou muito mais objetivo.”</p>
-            <strong>— Rafael, 29</strong>
-          </article>
-          <article class="card glass">
-            <p>“Parece personal trainer no bolso. O reajuste semanal foi o que mais me ajudou.”</p>
-            <strong>— Camila, 34</strong>
-          </article>
-          <article class="card glass">
-            <p>“Uso em casa com halteres e os treinos continuam desafiadores sem exagero.”</p>
-            <strong>— Bruno, 24</strong>
-          </article>
+          <article class="card glass"><p>“Em 4 semanas parei de perder tempo na academia. O plano ficou muito mais objetivo.”</p><strong>— Rafael, 29</strong></article>
+          <article class="card glass"><p>“Parece personal trainer no bolso. O reajuste semanal foi o que mais me ajudou.”</p><strong>— Camila, 34</strong></article>
+          <article class="card glass"><p>“Uso em casa e os treinos continuam desafiadores sem exagero.”</p><strong>— Bruno, 24</strong></article>
         </div>
       </section>
-    </section>
-
-    <section id="auth-section" class="auth-wrap hidden">
-      <div class="card glass auth-card">
-        <h2>Entre no FitAI Planner</h2>
-        <p>Monte seu treino em menos de 2 minutos.</p>
-        <div class="tabs">
-          <button id="tab-login" class="btn active">Login</button>
-          <button id="tab-register" class="btn">Cadastro</button>
-        </div>
-        <form id="auth-form" class="grid">
-          <input id="name" placeholder="Nome (somente cadastro)" class="hidden" />
-          <input id="email" type="email" placeholder="Email" required />
-          <input id="password" type="password" placeholder="Senha" required />
-          <button class="btn neon" type="submit">Entrar</button>
-        </form>
-        <p id="auth-msg" class="msg"></p>
-      </div>
-    </section>
-
-    <section id="billing-section" class="card glass hidden">
-      <h2>Escolha seu pacote</h2>
-      <p>Para usar o serviço, ative uma assinatura.</p>
-      <div class="actions">
-        <button id="buy-12m" class="btn neon">12 meses — R$99/mês</button>
-        <button id="buy-6m" class="btn">6 meses — R$119/mês</button>
-      </div>
-      <p id="billing-msg" class="msg"></p>
-    </section>
-
-    <section id="onboarding-section" class="card glass hidden">
-      <h2>Questionário Inicial</h2>
-      <form id="onboarding-form" class="grid two">
-        <select id="objective" required>
-          <option value="">Objetivo</option>
-          <option value="hipertrofia">Hipertrofia</option>
-          <option value="emagrecimento">Emagrecimento</option>
-          <option value="condicionamento">Condicionamento</option>
-        </select>
-        <select id="experience_level" required>
-          <option value="">Nível</option>
-          <option value="iniciante">Iniciante</option>
-          <option value="intermediario">Intermediário</option>
-          <option value="avancado">Avançado</option>
-        </select>
-        <input id="days_per_week" type="number" min="2" max="6" placeholder="Dias por semana" required />
-        <input id="time_per_session" type="number" min="20" max="120" placeholder="Minutos por treino" required />
-        <input id="equipment" placeholder="Equipamentos (academia, halteres, casa...)" required />
-        <select id="split_preference">
-          <option value="auto">Divisão automática (recomendada)</option>
-          <option value="full_body">Full Body</option>
-          <option value="upper_lower">Upper/Lower</option>
-          <option value="ppl">Push Pull Legs</option>
-        </select>
-        <input id="limitations" placeholder="Limitações físicas (opcional)" />
-        <button class="btn neon" type="submit">Gerar treino</button>
-      </form>
-      <p id="onboarding-msg" class="msg"></p>
-    </section>
-
-    <section id="dashboard-section" class="hidden">
-      <div id="demo-banner" class="card glass hidden">
-        <h2>Modo demonstração ativo</h2>
-        <p>Você está usando uma versão limitada para conhecer o produto. Para liberar criação ilimitada, check-in inteligente e exportação completa, assine um plano.</p>
-        <div class="actions">
-          <a href="/checkin.html" class="btn neon">Assinar agora</a>
-        </div>
-      </div>
-
-      <div class="card glass">
-        <h2>Assinatura</h2>
-        <p id="subscription-status">Carregando status...</p>
-        <div class="actions">
-          <button id="btn-change-to-12m" class="btn cta">Ativar/renovar 12 meses — R$99/mês</button>
-        </div>
-        <p id="billing-msg-dashboard" class="msg"></p>
-      </div>
-
-      <div class="card glass">
-        <h2>Meus treinos</h2>
-        <div class="actions">
-          <input id="new-workout-name" placeholder="Nome do novo treino" />
-          <button id="btn-create-workout" class="btn">Criar novo treino</button>
-          <button id="btn-refresh-list" class="btn">Atualizar lista</button>
-        </div>
-        <div id="workout-list"></div>
-      </div>
-
-      <div class="card glass">
-        <h2>Dashboard</h2>
-        <div class="actions">
-          <button id="btn-refresh" class="btn">Atualizar treino ativo</button>
-          <button id="btn-rename" class="btn">Renomear treino ativo</button>
-          <button id="btn-pdf" class="btn neon">Exportar PDF</button>
-        </div>
-        <div id="workout-output"></div>
-      </div>
-
-      <div class="card glass">
-        <h3>Ajuste manual do treino ativo (texto editável)</h3>
-        <p>Clique em <strong>Editar texto</strong> para transformar o treino em texto editável e depois salvar.</p>
-        <div class="actions">
-          <button id="btn-edit-text" class="btn">Editar texto</button>
-          <button id="btn-save-text" class="btn neon hidden">Salvar texto</button>
-          <button id="btn-cancel-text" class="btn hidden">Cancelar</button>
-        </div>
-        <div id="plan-text-view" class="day"></div>
-      </div>
-
-      <div class="card glass">
-        <h3>Check-in Semanal</h3>
-        <form id="checkin-form" class="grid two">
-          <input id="week_label" placeholder="Semana (ex: 2026-W08)" />
-          <input id="completed_percent" type="number" min="0" max="100" placeholder="% de conclusão" required />
-          <input id="difficulty" type="number" min="1" max="10" placeholder="Dificuldade geral (1-10)" required />
-          <input id="energy" type="number" min="1" max="10" placeholder="Energia da semana (1-10)" required />
-          <input id="pain" type="number" min="1" max="10" placeholder="Desconforto/dor (1-10)" required />
-          <input id="notes" placeholder="Observações rápidas da semana" />
-          <button class="btn neon" type="submit">Salvar check-in semanal</button>
-        </form>
-
-        <div class="day" style="margin-top:12px;">
-          <strong>Assistente IA do treino</strong>
-          <p>Converse sobre o treino atual e aplique sugestões automáticas.</p>
-          <div id="ai-chat-log" class="chat-log"></div>
-          <div class="actions">
-            <input id="ai-chat-input" placeholder="Ex: achei pernas pesado demais e peito leve" />
-            <button id="btn-ai-send" class="btn">Enviar feedback</button>
-            <button id="btn-ai-apply" class="btn neon">Aplicar sugestão no treino</button>
-          </div>
-        </div>
-
-        <p id="checkin-msg" class="msg"></p>
-      </div>
     </section>
   </main>
 

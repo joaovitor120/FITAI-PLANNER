@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login • FitAI Planner</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body data-page="login">
+  <div class="bg-glow"></div>
+  <header class="topbar glass">
+    <a href="/" class="brand brand-link">⚡ FitAI Planner</a>
+    <div class="top-actions"><button id="theme-toggle" class="btn ghost">🌙 Dark</button></div>
+  </header>
+
+  <main class="container auth-wrap">
+    <section class="card glass auth-card">
+      <h2>Entrar no FitAI Planner</h2>
+      <form id="login-form" class="grid">
+        <input id="email" type="email" placeholder="Email" required />
+        <input id="password" type="password" placeholder="Senha" required />
+        <button class="btn neon" type="submit">Entrar</button>
+      </form>
+      <p id="auth-msg" class="msg"></p>
+      <p>Não tem login ainda? <a href="/register.html">cadastre-se aqui</a>.</p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

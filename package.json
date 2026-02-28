@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "migrate:postgres": "node migrate-sqlite-to-postgres.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -14,6 +15,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "pdfkit": "^0.15.0",
-    "sqlite3": "^5.0.2"
+    "pg": "^8.13.1",
+    "sqlite3": "^5.1.7"
   }
 }
