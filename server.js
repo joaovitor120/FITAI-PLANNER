@@ -22,6 +22,45 @@ const exerciseVideoMap = Object.entries(exerciseVideoMapRaw || {}).flatMap(([gro
 
 app.use(cors());
 app.use(express.json());
+
+const ADMIN_GATE_USER = process.env.ADMIN_GATE_USER || 'adm123';
+const ADMIN_GATE_PASS = process.env.ADMIN_GATE_PASS || 'adm123';
+const ADMIN_GATE_SECRET = process.env.ADMIN_GATE_SECRET || JWT_SECRET;
+
+function parseCookies(req) {
+  const raw = req.headers.cookie || '';
+  return raw.split(';').map(v => v.trim()).filter(Boolean).reduce((acc, part) => {
+    const idx = part.indexOf('=');
+    if (idx > -1) acc[part.slice(0, idx)] = decodeURIComponent(part.slice(idx + 1));
+    return acc;
+  }, {});
+}
+
+function getClientIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function setGateCookie(res, token) {
+  res.setHeader('Set-Cookie', `fitai_admin_gate=${encodeURIComponent(token)}; Max-Age=${60 * 60 * 24 * 365}; Path=/; SameSite=Lax`);
+}
+
+function adminGateMiddleware(req, res, next) {
+  const openPaths = ['/admin-gate.html', '/api/admin-gate/login', '/api/admin-gate/status'];
+  if (openPaths.includes(req.path)) return next();
+  const cookies = parseCookies(req);
+  const gate = cookies.fitai_admin_gate;
+  if (gate) {
+    try {
+      const decoded = jwt.verify(gate, ADMIN_GATE_SECRET);
+      if (decoded?.ok) return next();
+    } catch {}
+  }
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Acesso bloqueado. Faça login no portão admin.' });
+  return res.redirect('/admin-gate.html');
+}
+
+app.use(adminGateMiddleware);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const metrics = { requests: 0, byRoute: {}, byStatus: {} };
@@ -89,6 +128,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS checkins (id SERIAL PRIMARY KEY, user_id INT NOT NULL, workout_id INT, week_label TEXT NOT NULL, difficulty INT NOT NULL, energy INT NOT NULL, pain INT NOT NULL, completed_percent INT NOT NULL, notes TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS subscriptions (id SERIAL PRIMARY KEY, user_id INT NOT NULL, package_code TEXT NOT NULL, monthly_price INT NOT NULL, months INT NOT NULL, status TEXT NOT NULL, starts_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ends_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS nutrition_plans (id SERIAL PRIMARY KEY, user_id INT NOT NULL, objective TEXT NOT NULL, weight NUMERIC NOT NULL, height NUMERIC NOT NULL, age INT NOT NULL, sex TEXT NOT NULL, activity_level TEXT NOT NULL, routine_notes TEXT, allergies TEXT, disliked_foods TEXT, calories INT NOT NULL, protein_g INT NOT NULL, carbs_g INT NOT NULL, fat_g INT NOT NULL, meal_plan_json TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS admin_access_logs (id SERIAL PRIMARY KEY, username TEXT NOT NULL, ip TEXT NOT NULL, user_agent TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     `);
   } else {
     await run(`CREATE TABLE IF NOT EXISTS users (
@@ -174,6 +214,14 @@ async function initDb() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(user_id) REFERENCES users(id)
     )`);
+
+    await run(`CREATE TABLE IF NOT EXISTS admin_access_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      ip TEXT NOT NULL,
+      user_agent TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
   }
 
   await ensureColumn('profiles', 'split_preference', 'TEXT');
@@ -201,6 +249,33 @@ function auth(req, res, next) {
     res.status(401).json({ error: 'Token inválido' });
   }
 }
+
+app.get('/api/admin-gate/status', (req, res) => {
+  const cookies = parseCookies(req);
+  const gate = cookies.fitai_admin_gate;
+  if (!gate) return res.status(401).json({ ok: false });
+  try {
+    const decoded = jwt.verify(gate, ADMIN_GATE_SECRET);
+    return res.json({ ok: Boolean(decoded?.ok) });
+  } catch {
+    return res.status(401).json({ ok: false });
+  }
+});
+
+app.post('/api/admin-gate/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (username !== ADMIN_GATE_USER || password !== ADMIN_GATE_PASS) {
+    return res.status(401).json({ error: 'Credenciais do portão admin inválidas' });
+  }
+
+  const ip = getClientIp(req);
+  const userAgent = String(req.headers['user-agent'] || '');
+  await run('INSERT INTO admin_access_logs (username, ip, user_agent) VALUES (?, ?, ?)', [username, ip, userAgent]);
+
+  const token = jwt.sign({ ok: true, username }, ADMIN_GATE_SECRET, { expiresIn: '365d' });
+  setGateCookie(res, token);
+  return res.json({ message: 'Acesso liberado', ip });
+});
 
 function pickSplit(days, splitPreference) {
   if (splitPreference && splitPreference !== 'auto') return splitPreference;

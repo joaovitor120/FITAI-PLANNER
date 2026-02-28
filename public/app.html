@@ -10,7 +10,7 @@
   <div class="bg-glow"></div>
   <header class="topbar glass">
     <a href="/" class="brand brand-link">⚡ FitAI Planner</a>
-    <div class="top-actions"><button id="theme-toggle" class="btn ghost">🌙 Dark</button><button id="btn-logout" class="btn ghost">Sair</button></div>
+    <div class="top-actions"><button id="theme-toggle" class="btn ghost">🌙 Dark</button><button id="btn-user" class="btn ghost" title="Dados do usuário">👤</button><button id="btn-logout" class="btn ghost">Sair</button></div>
   </header>
 
   <main class="container">
@@ -76,19 +76,13 @@
           <strong>Assistente IA do treino</strong>
           <p>Escolha o treino alvo e envie dúvidas/ajustes.</p>
           <div class="actions"><select id="ai-workout-target"><option value="">Treino selecionado no dashboard</option></select></div>
-          <div id="ai-chat-log" class="chat-log"></div>
+          <div id="ai-chat-log" class="chat-log hidden"></div>
           <div class="actions"><textarea id="ai-chat-input" rows="3" placeholder="Fale ou peça qualquer coisa relacionada a treino"></textarea><button id="btn-ai-send" class="btn">Enviar</button></div>
         </div>
 
         <p id="checkin-msg" class="msg"></p>
       </section>
 
-      <section id="live-training" class="card glass hidden">
-        <h2>Modo Treino (tempo real)</h2>
-        <div class="actions"><button id="btn-start-live" class="btn neon">Iniciar treino aberto</button><button id="btn-prev-live" class="btn">Exercício anterior</button><button id="btn-next-live" class="btn">Próximo exercício</button><button id="btn-toggle-timer" class="btn">Cronômetro</button><button id="btn-exit-live" class="btn ghost">Sair do modo treino</button></div>
-        <div id="rest-timer" class="day hidden"><strong>Descanso:</strong> <span id="rest-time">00:00</span> <button id="btn-start-timer" class="btn btn-mini">Iniciar</button><button id="btn-reset-timer" class="btn btn-mini">Reset</button></div>
-        <div id="live-output" class="day"></div>
-      </section>
     </section>
 
     <section id="panel-schedule" class="hidden">
@@ -98,6 +92,12 @@
         <div id="schedule-month" class="day"></div>
         <div id="schedule-grid" class="calendar-grid"></div>
         <div id="schedule-detail" class="day hidden"></div>
+        <section id="live-training" class="card glass hidden">
+          <h3>Modo Treino do Dia</h3>
+          <div class="actions"><button id="btn-toggle-timer" class="btn">Cronômetro</button><button id="btn-exit-live" class="btn ghost">Sair do modo treino</button></div>
+          <div id="rest-timer" class="day hidden"><strong>Descanso:</strong> <span id="rest-time">00:00</span> <button id="btn-start-timer" class="btn btn-mini">Iniciar/Pausar</button><button id="btn-reset-timer" class="btn btn-mini">Reset</button></div>
+          <div id="live-output" class="day"></div>
+        </section>
       </section>
     </section>
 
@@ -124,7 +124,7 @@
 
         <div class="day" style="margin-top:12px;">
           <strong>Assistente IA da dieta</strong>
-          <div id="nutrition-chat-log" class="chat-log"></div>
+          <div id="nutrition-chat-log" class="chat-log hidden"></div>
           <div class="actions"><textarea id="nutrition-chat-input" rows="3" placeholder="Fale ou peça qualquer coisa relacionada à sua dieta"></textarea><button id="btn-nutrition-chat" class="btn">Perguntar</button></div>
         </div>
       </section>
@@ -132,6 +132,7 @@
   </main>
 
   <div id="exercise-modal" class="modal hidden"><div class="modal-box glass card"><div class="actions" style="justify-content:space-between;"><strong id="exercise-modal-title">Exercício</strong><button id="btn-close-modal" class="btn">Fechar</button></div><iframe id="exercise-frame" title="Vídeo do exercício" loading="lazy"></iframe><p><a id="exercise-open-new" target="_blank" rel="noopener">Abrir no YouTube em nova guia</a></p></div></div>
+  <div id="user-modal" class="modal hidden"><div class="modal-box glass card"><div class="actions" style="justify-content:space-between;"><strong>Dados do usuário</strong><button id="btn-close-user-modal" class="btn">Fechar</button></div><div id="user-modal-content" class="day"></div></div></div>
   <script src="/app.js"></script>
 </body>
 </html>

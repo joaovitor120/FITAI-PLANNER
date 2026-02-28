@@ -48,12 +48,13 @@ function renderSubscriptionStatus() {
 
 function addAiLog(author, text, box = 'ai-chat-log') {
   const el = $(box); if (!el) return;
+  el.classList.remove('hidden');
   const line = document.createElement('p'); line.className = 'chat-msg'; line.innerHTML = `<strong>${author}:</strong> ${text}`;
   el.appendChild(line); el.scrollTop = el.scrollHeight;
 }
 
 function infoTip(label, text) {
-  return `${label} <button class="btn btn-mini term-tip" title="${text}">?</button>`;
+  return `<span class="term-help" data-tip="${text}">${label}</span>`;
 }
 
 function formatPlanAsText(plan) {
@@ -62,6 +63,28 @@ function formatPlanAsText(plan) {
 
 function normalize(v=''){ return v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
 const cap = (s='') => s.replace(/(^|\n)([a-zà-ú])/g, (_, a, b) => `${a}${b.toUpperCase()}`);
+
+let tooltipTimer = null;
+function bindTermTooltips() {
+  document.querySelectorAll('.term-help').forEach((el) => {
+    el.onmouseenter = () => {
+      tooltipTimer = setTimeout(() => {
+        const tip = document.createElement('div');
+        tip.className = 'term-tooltip';
+        tip.id = 'term-tooltip';
+        tip.textContent = el.dataset.tip || '';
+        document.body.appendChild(tip);
+        const r = el.getBoundingClientRect();
+        tip.style.left = `${r.left + window.scrollX}px`;
+        tip.style.top = `${r.bottom + window.scrollY + 8}px`;
+      }, 2000);
+    };
+    el.onmouseleave = () => {
+      clearTimeout(tooltipTimer);
+      document.getElementById('term-tooltip')?.remove();
+    };
+  });
+}
 
 async function openExerciseModal(name) {
   $('exercise-modal-title').textContent = `${name} (carregando vídeo...)`;
@@ -97,17 +120,22 @@ function renderWorkout(workout) {
     const warm = Math.max(1, Math.floor(Number(ex.sets || 3) / 3));
     const rec = 1;
     const work = Math.max(1, Number(ex.sets || 3) - warm - rec);
-    return `<li>${ex.name}: ${ex.sets}x${ex.reps} (${ex.rest}) <button class="btn btn-mini" onclick="openExercise('${String(ex.name).replace(/'/g, "\\'")}')">Ver execução</button><br/>
-    <small>${infoTip('Séries de aquecimento', 'Carga baixa para preparar o músculo/articulação')}: ${warm} • ${infoTip('Séries de reconhecimento', 'Série de adaptação antes da carga principal')}: ${rec} • ${infoTip('Séries de trabalho', 'Séries principais próximas da falha técnica')}: ${work} • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: ${day.intensity}</small></li>`;
+    const seriesLines = [
+      `${infoTip('Séries de aquecimento', 'Carga baixa para preparar o músculo/articulação')}: ${warm}x15-20 • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: 4+`,
+      `${infoTip('Séries de reconhecimento', 'Carga para reconhecer o movimento sem falhar')}: ${rec}x<10 • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: 2-3`,
+      `${infoTip('Séries de trabalho', 'Séries principais próximas da falha técnica')}: ${work}x${ex.reps} • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: ${day.intensity}`
+    ];
+    return `<li><strong>${ex.name}</strong> (${ex.rest}) <button class="btn btn-mini" onclick="openExercise('${String(ex.name).replace(/'/g, "\\'")}')">Ver execução</button><br/>
+    <small>${seriesLines.join('<br/>')}</small></li>`;
   }).join('')}
   </ul><small>Descanso recomendado: 60-120s entre séries.</small></div>`).join('');
 
   $('plan-text-view').textContent = formatPlanAsText(workout.plan);
   $('plan-text-view').contentEditable = 'false';
   $('dashboard-section').classList.remove('hidden');
-  $('live-training')?.classList.remove('hidden');
   state.liveSequence = (workout.plan || []).flatMap(d => (d.exercises || []).map(ex => ({ day: d.day, ...ex })));
   state.liveIndex = 0;
+  bindTermTooltips();
   renderSchedule();
 }
 
@@ -178,37 +206,55 @@ function setTab(tab) {
   });
 }
 
+function getWeeklyTrainPattern(split, freq) {
+  const s = normalize(split || '');
+  if (s.includes('full body') || s.includes('full')) return freq === 4 ? [1,2,4,5] : [1,3,5];
+  if (s.includes('upper') || s.includes('lower')) return freq >= 5 ? [1,2,4,5,6] : [1,2,4,5];
+  if (s.includes('push') || s.includes('pull') || s.includes('legs')) return freq >= 6 ? [1,2,3,5,6] : [1,2,3,5,6].slice(0, Math.max(4, freq));
+  return [1,3,5];
+}
+
 function renderSchedule() {
   if (!state.currentWorkout?.plan?.length || !$('schedule-grid')) return;
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
   const total = new Date(y, m + 1, 0).getDate();
-  const freq = Math.max(2, Math.min(6, state.profileDaysPerWeek || state.currentWorkout.plan.length || 3));
+  const freq = Math.max(3, Math.min(6, state.profileDaysPerWeek || state.currentWorkout.plan.length || 3));
+  const pattern = getWeeklyTrainPattern(state.currentWorkout.split_name, freq);
   $('schedule-month').textContent = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   const days = [];
   let idx = 0;
+  const dayToPlan = {};
   for (let d = 1; d <= total; d++) {
     const dt = new Date(y, m, d);
     const weekDay = dt.getDay();
-    const isTrainDay = weekDay >= 1 && weekDay <= Math.min(freq, 5);
+    const isTrainDay = pattern.includes(weekDay);
     const planDay = isTrainDay ? state.currentWorkout.plan[idx % state.currentWorkout.plan.length] : null;
-    if (isTrainDay) idx++;
+    if (isTrainDay) {
+      dayToPlan[d] = planDay;
+      idx++;
+    }
     days.push(`<button class="day cal-day ${isTrainDay ? 'train' : ''}" data-day="${d}">${d}${isTrainDay ? `<br/><small>${planDay.focus}</small>` : ''}</button>`);
   }
   $('schedule-grid').innerHTML = days.join('');
-  [...document.querySelectorAll('.cal-day.train')].forEach((btn) => btn.onclick = () => {
+
+  [...document.querySelectorAll('.cal-day')].forEach((btn) => btn.onclick = () => {
     const day = Number(btn.dataset.day);
-    const n = (day % state.currentWorkout.plan.length);
-    const selected = state.currentWorkout.plan[n];
+    const selected = dayToPlan[day];
+    if (!selected) {
+      $('schedule-detail').classList.remove('hidden');
+      $('schedule-detail').innerHTML = `<strong>Dia ${day}</strong><p>Dia de descanso.</p>`;
+      $('live-training').classList.add('hidden');
+      return;
+    }
+
     $('schedule-detail').classList.remove('hidden');
     $('schedule-detail').innerHTML = `<strong>Dia ${day} • ${selected.focus}</strong><p>${selected.exercises.map(ex => `${ex.name} (${ex.sets}x${ex.reps})`).join(' • ')}</p><button id="schedule-start-live" class="btn neon">Entrar no modo treino</button>`;
     $('schedule-start-live').onclick = () => {
-      setTab('training');
       $('live-training').classList.remove('hidden');
-      state.liveIndex = 0;
-      renderLive();
+      renderLiveFromDay(selected);
     };
   });
 }
@@ -262,7 +308,7 @@ function renderNutrition(data) {
     const mealName = cap(String(m.meal || 'Refeição'));
     const items = Array.isArray(m.items) ? m.items : [];
     const mealCalories = m.calories || Math.round((data.calories || 0) / Math.max(1, (data.meals || []).length || 4));
-    return `<div class="day"><div class="meal-head"><strong>${emojiByMeal[mealName] || '🍽️'} ${mealName}</strong><span>${mealCalories} kcal</span></div><ul class="meal-list">${items.map(i => `<li>${cap(i.label)} <small>(${i.calories || 0} kcal • P ${i.protein_g || 0}g • C ${i.carbs_g || 0}g • G ${i.fat_g || 0}g)</small></li>`).join('')}</ul><small>Macros da refeição: P ${m.protein_g || 0}g • C ${m.carbs_g || 0}g • G ${m.fat_g || 0}g</small></div>`;
+    return `<div class="day"><div class="meal-head"><strong>${emojiByMeal[mealName] || '🍽️'} ${mealName}</strong><span>${mealCalories} kcal • P ${m.protein_g || 0}g • C ${m.carbs_g || 0}g • G ${m.fat_g || 0}g</span></div><ul class="meal-list">${items.map(i => `<li>${cap(i.label)} <small>(${i.calories || 0} kcal • P ${i.protein_g || 0}g • C ${i.carbs_g || 0}g • G ${i.fat_g || 0}g)</small></li>`).join('')}</ul></div>`;
   }).join('');
 
   out.innerHTML = `<div class="day"><strong>Meta diária:</strong> ${data.calories || data.calories} kcal • P ${data.protein_g || data.macros?.protein_g}g • C ${data.carbs_g || data.macros?.carbs_g}g • G ${data.fat_g || data.macros?.fat_g}g</div>${meals}`;
@@ -341,7 +387,24 @@ function renderLive() {
   if (!out) return;
   if (!state.liveSequence.length) return out.innerHTML = 'Abra um treino para iniciar o modo treino.';
   const cur = state.liveSequence[state.liveIndex];
-  out.innerHTML = `<strong>${cur.day} • ${cur.name}</strong><p>Séries: ${cur.sets} | Reps: ${cur.reps} | Descanso recomendado: ${cur.rest} | Tempo sugerido: ${cur.estimated_seconds || 90}s</p>`;
+  const warm = Math.max(1, Math.floor(Number(cur.sets || 3) / 3));
+  const rec = 1;
+  const work = Math.max(1, Number(cur.sets || 3) - warm - rec);
+  const restMatch = String(cur.rest || '').match(/(\d+)/);
+  state.timer.sec = restMatch ? Number(restMatch[1]) : 60;
+  $('rest-time').textContent = `00:${String(state.timer.sec).padStart(2, '0')}`;
+  const checks = [];
+  for (let i = 1; i <= warm; i++) checks.push(`<label><input type="checkbox"/> Aquecimento ${i}: 15-20 reps, carga leve, RIR 4+</label>`);
+  for (let i = 1; i <= rec; i++) checks.push(`<label><input type="checkbox"/> Reconhecimento ${i}: <10 reps, sem falhar, RIR 2-3</label>`);
+  for (let i = 1; i <= work; i++) checks.push(`<label><input type="checkbox"/> Trabalho ${i}: ${cur.reps} reps, próximo da falha, ${cur.day ? 'RIR ' + (cur.intensity || '1-2') : 'RIR 1-2'}</label>`);
+
+  out.innerHTML = `<strong>${cur.day} • ${cur.name}</strong><p>Descanso recomendado: ${cur.rest} • Tempo sugerido: ${cur.estimated_seconds || 90}s</p><div class="checklist">${checks.join('<br/>')}</div>`;
+}
+
+function renderLiveFromDay(dayPlan) {
+  state.liveSequence = (dayPlan.exercises || []).map(ex => ({ day: dayPlan.day, intensity: dayPlan.intensity, ...ex }));
+  state.liveIndex = 0;
+  renderLive();
 }
 
 function bindEnterBehavior(el, sendFn) {
@@ -356,6 +419,14 @@ function bindEnterBehavior(el, sendFn) {
 async function initApp() {
   await routeApp();
   $('btn-logout').onclick = () => { localStorage.removeItem('fitai_token'); window.location.href = '/'; };
+  $('btn-user').onclick = async () => {
+    const me = await fetch('/api/me', { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
+    const profile = await fetch('/api/profile', { headers: authHeaders() }).then(r => r.ok ? r.json() : { profile: null }).catch(() => ({ profile: null }));
+    const diet = await fetch('/api/profile/diet', { headers: authHeaders() }).then(r => r.ok ? r.json() : { profile: null }).catch(() => ({ profile: null }));
+    $('user-modal-content').innerHTML = `<p><strong>Nome:</strong> ${me.user?.name || '-'}</p><p><strong>Email:</strong> ${me.user?.email || '-'}</p><p><strong>Objetivo atual:</strong> ${profile.profile?.objective || '-'}</p><p><strong>Dias/semana:</strong> ${profile.profile?.days_per_week || '-'}</p><p><strong>Peso:</strong> ${diet.profile?.weight || '-'} kg</p>`;
+    $('user-modal').classList.remove('hidden');
+  };
+  $('btn-close-user-modal').onclick = () => $('user-modal').classList.add('hidden');
   $('buy-12m').onclick = async () => doMockCheckout('plan_12m');
   $('buy-6m').onclick = async () => doMockCheckout('plan_6m');
   $('buy-super').onclick = async () => doMockCheckout('plan_super');
@@ -462,22 +533,23 @@ async function initApp() {
   bindEnterBehavior($('ai-chat-input'), sendTrainingAi);
   bindEnterBehavior($('nutrition-chat-input'), sendNutritionAi);
 
-  $('btn-start-live').onclick = () => { state.liveIndex = 0; $('live-training')?.classList.remove('hidden'); renderLive(); };
-  $('btn-prev-live').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = (state.liveIndex - 1 + state.liveSequence.length) % state.liveSequence.length; renderLive(); };
-  $('btn-next-live').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = (state.liveIndex + 1) % state.liveSequence.length; renderLive(); };
-  $('btn-exit-live').onclick = () => { $('live-output').innerHTML = 'Modo treino pausado. Seu treino permanece salvo.'; };
+  $('btn-exit-live').onclick = () => { $('live-training').classList.add('hidden'); $('live-output').innerHTML = 'Modo treino pausado. Seu treino permanece salvo.'; };
 
   $('btn-toggle-timer').onclick = () => $('rest-timer').classList.toggle('hidden');
   $('btn-start-timer').onclick = () => {
     if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; return; }
     state.timer.id = setInterval(() => {
-      state.timer.sec += 1;
+      state.timer.sec = Math.max(0, state.timer.sec - 1);
       const mm = String(Math.floor(state.timer.sec / 60)).padStart(2, '0');
       const ss = String(state.timer.sec % 60).padStart(2, '0');
       $('rest-time').textContent = `${mm}:${ss}`;
+      if (state.timer.sec === 0) {
+        clearInterval(state.timer.id);
+        state.timer.id = null;
+      }
     }, 1000);
   };
-  $('btn-reset-timer').onclick = () => { state.timer.sec = 0; $('rest-time').textContent = '00:00'; if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; } };
+  $('btn-reset-timer').onclick = () => { $('rest-time').textContent = '01:00'; state.timer.sec = 60; if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; } };
 
   $('btn-close-modal').onclick = () => { $('exercise-modal').classList.add('hidden'); $('exercise-frame').src = ''; };
 }

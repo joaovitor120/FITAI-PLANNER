@@ -13,13 +13,13 @@
 html[data-theme="dark"] {
   --bg-1: #090f1f;
   --bg-2: #0b1837;
-  --card: rgba(14, 25, 51, 0.75);
-  --text: #edf4ff;
-  --muted: #9bb2d1;
+  --card: rgba(14, 25, 51, 0.88);
+  --text: #f7fbff;
+  --muted: #d0dfff;
   --primary: #60d7ff;
   --primary-2: #8b7aff;
   --accent: #52f2b8;
-  --border: rgba(183, 211, 255, 0.2);
+  --border: rgba(183, 211, 255, 0.34);
 }
 
 * { box-sizing: border-box; }
@@ -159,11 +159,12 @@ input, select, textarea {
   border: 1px solid var(--border);
   background: rgba(255,255,255,.72);
   color: var(--text);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 12px 13px;
   font-size: .97rem;
   outline: none;
 }
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px); background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
 html[data-theme="dark"] input,
 html[data-theme="dark"] select,
 html[data-theme="dark"] textarea {
@@ -255,7 +256,10 @@ html[data-theme="dark"] .chat-log { background: rgba(8,17,37,.55); }
 .calendar-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; }
 .cal-day { min-height: 82px; text-align:left; }
 .cal-day.train { border-color: var(--primary); }
-.term-tip { border-radius: 999px; min-height: 18px; width: 18px; padding: 0; font-size: .65rem; margin-left: 4px; opacity: .75; }
+.term-help { border-bottom: 1px dashed var(--primary); cursor: help; transition: opacity .2s; }
+.term-help:hover { opacity: .85; }
+.term-tooltip { position: absolute; z-index: 100; max-width: 280px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; box-shadow: 0 10px 25px rgba(0,0,0,.25); font-size: .85rem; }
+.checklist label { display:block; margin: 6px 0; }
 
 @media (max-width: 960px) {
   .hero { grid-template-columns: 1fr; }

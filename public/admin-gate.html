@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Acesso administrativo • FitAI</title>
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center; font-family:Inter,Segoe UI,sans-serif; background:#0b1837; color:#edf4ff; }
+    .box { width:min(420px,92vw); background:#102347; border:1px solid #27497d; border-radius:16px; padding:20px; }
+    input,button{ width:100%; padding:12px; border-radius:10px; margin-top:10px; border:1px solid #355f9f; }
+    input{ background:#0c1b3a; color:#fff; }
+    button{ background:#22c55e; color:#fff; font-weight:700; cursor:pointer; }
+    #msg{ min-height:24px; margin-top:10px; color:#93c5fd; }
+  </style>
+</head>
+<body>
+  <form class="box" id="gate-form">
+    <h2>Portão de Acesso</h2>
+    <p>Entre com login e senha para liberar a plataforma.</p>
+    <input id="username" placeholder="Login" required />
+    <input id="password" type="password" placeholder="Senha" required />
+    <button type="submit">Entrar</button>
+    <p id="msg"></p>
+  </form>
+  <script>
+    async function check(){
+      const res = await fetch('/api/admin-gate/status');
+      if (res.ok) window.location.href = '/';
+    }
+    check();
+
+    document.getElementById('gate-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const res = await fetch('/api/admin-gate/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById('msg').textContent = data.error || 'Falha no login';
+        return;
+      }
+      document.getElementById('msg').textContent = `Acesso liberado. IP registrado: ${data.ip || 'desconhecido'}`;
+      setTimeout(() => window.location.href = '/', 300);
+    });
+  </script>
+</body>
+</html>
