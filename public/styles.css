@@ -251,6 +251,11 @@ html[data-theme="dark"] .chat-log { background: rgba(8,17,37,.55); }
 .chat-msg strong { color: var(--text); }
 .meal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
 .meal-list { margin: 0; padding-left: 18px; display:grid; gap:6px; }
+.muted { color: var(--muted); }
+.calendar-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; }
+.cal-day { min-height: 82px; text-align:left; }
+.cal-day.train { border-color: var(--primary); }
+.term-tip { border-radius: 999px; min-height: 18px; width: 18px; padding: 0; font-size: .65rem; margin-left: 4px; opacity: .75; }
 
 @media (max-width: 960px) {
   .hero { grid-template-columns: 1fr; }

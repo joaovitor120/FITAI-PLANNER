@@ -8,9 +8,12 @@ const state = {
   aiSuggestedPlan: null,
   aiPendingConfirm: false,
   aiTargetWorkoutId: null,
+  aiPendingMeta: null,
   workoutCache: [],
   liveSequence: [],
-  liveIndex: 0
+  liveIndex: 0,
+  timer: { sec: 0, id: null },
+  profileDaysPerWeek: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -43,10 +46,14 @@ function renderSubscriptionStatus() {
   el.textContent = `Plano atual: ${labels[state.subscription.package_code] || state.subscription.package_code} • ativo até ${end}`;
 }
 
-function addAiLog(author, text) {
-  const el = $('ai-chat-log'); if (!el) return;
+function addAiLog(author, text, box = 'ai-chat-log') {
+  const el = $(box); if (!el) return;
   const line = document.createElement('p'); line.className = 'chat-msg'; line.innerHTML = `<strong>${author}:</strong> ${text}`;
   el.appendChild(line); el.scrollTop = el.scrollHeight;
+}
+
+function infoTip(label, text) {
+  return `${label} <button class="btn btn-mini term-tip" title="${text}">?</button>`;
 }
 
 function formatPlanAsText(plan) {
@@ -54,6 +61,8 @@ function formatPlanAsText(plan) {
 }
 
 function normalize(v=''){ return v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+const cap = (s='') => s.replace(/(^|\n)([a-zà-ú])/g, (_, a, b) => `${a}${b.toUpperCase()}`);
+
 async function openExerciseModal(name) {
   $('exercise-modal-title').textContent = `${name} (carregando vídeo...)`;
   $('exercise-modal').classList.remove('hidden');
@@ -65,10 +74,9 @@ async function openExerciseModal(name) {
     $('exercise-frame').src = data.embedUrl;
     $('exercise-open-new').href = data.watchUrl;
   } catch {
-    const fallback = `https://www.youtube.com/results?search_query=${encodeURIComponent(name + ' leandro twin')}`;
-    $('exercise-modal-title').textContent = `${name} (fallback)`;
-    $('exercise-frame').src = fallback;
-    $('exercise-open-new').href = fallback;
+    $('exercise-modal-title').textContent = `${name} (sem vídeo mapeado)`;
+    $('exercise-frame').src = 'about:blank';
+    $('exercise-open-new').href = `https://www.youtube.com/results?search_query=${encodeURIComponent(name)}`;
   }
 }
 window.openExercise = openExerciseModal;
@@ -81,22 +89,37 @@ function renderWorkout(workout) {
     $('plan-text-view').textContent = '';
     return;
   }
-  $('workout-output').innerHTML = `<p><strong>${workout.name}</strong> • v${workout.version} • Split: ${workout.split_name}</p>` + workout.plan.map(day => `
+
+  const equipmentTag = workout.equipment || workout.category || 'Não informado';
+  $('workout-output').innerHTML = `<p><strong>${workout.name}</strong> • v${workout.version} • Split: ${workout.split_name} • Categoria: ${equipmentTag}</p>` + workout.plan.map(day => `
   <div class="day"><strong>${day.day} — ${day.focus}</strong><br/><small>${day.intensity}</small><ul>
-  ${(day.exercises || []).map(ex => `<li>${ex.name}: ${ex.sets}x${ex.reps} (${ex.rest}) <button class="btn btn-mini" onclick="openExercise('${String(ex.name).replace(/'/g, "\\'")}')">Ver execução</button></li>`).join('')}
-  </ul></div>`).join('');
+  ${(day.exercises || []).map(ex => {
+    const warm = Math.max(1, Math.floor(Number(ex.sets || 3) / 3));
+    const rec = 1;
+    const work = Math.max(1, Number(ex.sets || 3) - warm - rec);
+    return `<li>${ex.name}: ${ex.sets}x${ex.reps} (${ex.rest}) <button class="btn btn-mini" onclick="openExercise('${String(ex.name).replace(/'/g, "\\'")}')">Ver execução</button><br/>
+    <small>${infoTip('Séries de aquecimento', 'Carga baixa para preparar o músculo/articulação')}: ${warm} • ${infoTip('Séries de reconhecimento', 'Série de adaptação antes da carga principal')}: ${rec} • ${infoTip('Séries de trabalho', 'Séries principais próximas da falha técnica')}: ${work} • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: ${day.intensity}</small></li>`;
+  }).join('')}
+  </ul><small>Descanso recomendado: 60-120s entre séries.</small></div>`).join('');
+
   $('plan-text-view').textContent = formatPlanAsText(workout.plan);
   $('plan-text-view').contentEditable = 'false';
   $('dashboard-section').classList.remove('hidden');
   $('live-training')?.classList.remove('hidden');
   state.liveSequence = (workout.plan || []).flatMap(d => (d.exercises || []).map(ex => ({ day: d.day, ...ex })));
   state.liveIndex = 0;
+  renderSchedule();
+}
+
+function featureGate(label = 'essa função') {
+  return `Para usar ${label}, você precisa de um plano ativo.`;
 }
 
 async function fetchCurrentWorkout() {
   const res = await fetch('/api/workouts/current', { headers: authHeaders() });
   if (!res.ok) return;
   renderWorkout(await res.json());
+  setMsg('update-msg', 'Treino atualizado com sucesso.');
 }
 
 function renderAiWorkoutTargets() {
@@ -117,18 +140,15 @@ async function loadWorkoutList() {
   <div class="actions"><button class="btn" onclick="activateWorkout(${w.id})">Ativar</button><button class="btn" onclick="openWorkout(${w.id})">Abrir treino</button><button class="btn" onclick="renameWorkout(${w.id}, '${String(w.name).replace(/'/g, "\\'")}')">Renomear</button></div></div>`).join('');
 }
 
-window.activateWorkout = async (id) => { await fetch(`/api/workouts/${id}/activate`, { method: 'POST', headers: authHeaders() }); await loadWorkoutList(); };
+window.activateWorkout = async (id) => { await fetch(`/api/workouts/${id}/activate`, { method: 'POST', headers: authHeaders() }); await loadWorkoutList(); await openWorkout(id); };
 window.openWorkout = async (id) => { const res = await fetch(`/api/workouts/${id}`, { headers: authHeaders() }); if (res.ok) renderWorkout(await res.json()); };
 window.renameWorkout = async (id, oldName='Meu treino') => {
+  if (!state.subscriptionActive) return setMsg('checkin-msg', featureGate('renomear treino'), true);
   const newName = prompt('Novo nome do treino:', oldName); if (!newName?.trim()) return;
   await fetch(`/api/workouts/${id}/rename`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ name: newName.trim() }) });
   await loadWorkoutList(); if (state.currentWorkout?.id === id) await openWorkout(id);
 };
 
-function requireSubscription() {
-  if (!state.subscriptionActive) { setMsg('checkin-msg', 'Você está no modo demonstração. Assine um plano para liberar essa função.', true); return false; }
-  return true;
-}
 async function doMockCheckout(packageCode) {
   const res = await fetch('/api/billing/mock-checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ packageCode }) });
   const data = await res.json(); if (!res.ok) return setMsg('billing-msg', data.error || 'Falha no pagamento simulado', true);
@@ -150,6 +170,49 @@ function parseTextToPlan(text) {
   });
 }
 
+function setTab(tab) {
+  const ids = ['training', 'nutrition', 'schedule'];
+  ids.forEach((k) => {
+    $(`tab-${k}`)?.classList.toggle('active', k === tab);
+    $(`panel-${k}`)?.classList.toggle('hidden', k !== tab);
+  });
+}
+
+function renderSchedule() {
+  if (!state.currentWorkout?.plan?.length || !$('schedule-grid')) return;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const total = new Date(y, m + 1, 0).getDate();
+  const freq = Math.max(2, Math.min(6, state.profileDaysPerWeek || state.currentWorkout.plan.length || 3));
+  $('schedule-month').textContent = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const days = [];
+  let idx = 0;
+  for (let d = 1; d <= total; d++) {
+    const dt = new Date(y, m, d);
+    const weekDay = dt.getDay();
+    const isTrainDay = weekDay >= 1 && weekDay <= Math.min(freq, 5);
+    const planDay = isTrainDay ? state.currentWorkout.plan[idx % state.currentWorkout.plan.length] : null;
+    if (isTrainDay) idx++;
+    days.push(`<button class="day cal-day ${isTrainDay ? 'train' : ''}" data-day="${d}">${d}${isTrainDay ? `<br/><small>${planDay.focus}</small>` : ''}</button>`);
+  }
+  $('schedule-grid').innerHTML = days.join('');
+  [...document.querySelectorAll('.cal-day.train')].forEach((btn) => btn.onclick = () => {
+    const day = Number(btn.dataset.day);
+    const n = (day % state.currentWorkout.plan.length);
+    const selected = state.currentWorkout.plan[n];
+    $('schedule-detail').classList.remove('hidden');
+    $('schedule-detail').innerHTML = `<strong>Dia ${day} • ${selected.focus}</strong><p>${selected.exercises.map(ex => `${ex.name} (${ex.sets}x${ex.reps})`).join(' • ')}</p><button id="schedule-start-live" class="btn neon">Entrar no modo treino</button>`;
+    $('schedule-start-live').onclick = () => {
+      setTab('training');
+      $('live-training').classList.remove('hidden');
+      state.liveIndex = 0;
+      renderLive();
+    };
+  });
+}
+
 async function routeApp() {
   if (!state.token) return window.location.href = '/login.html';
   const meRes = await fetch('/api/me', { headers: authHeaders() });
@@ -165,6 +228,14 @@ async function routeApp() {
   if (workoutRes.status === 404) $('onboarding-section')?.classList.remove('hidden'); else $('onboarding-section')?.classList.add('hidden');
   $('dashboard-section')?.classList.add('hidden');
   await loadWorkoutList();
+
+  const profileRes = await fetch('/api/profile', { headers: authHeaders() });
+  if (profileRes.ok) {
+    const p = await profileRes.json();
+    state.profileDaysPerWeek = p.profile?.days_per_week || null;
+  }
+
+  $('onboarding-tip').textContent = state.demoMode ? 'No modo demonstração, use pelo menos Dias por semana e Minutos por treino. Os demais campos são opcionais.' : '';
 
   const prof = await fetch('/api/profile/diet', { headers: authHeaders() });
   if (prof.ok) {
@@ -185,15 +256,13 @@ async function routeApp() {
 
 function renderNutrition(data) {
   const out = $('nutrition-output'); if (!out) return;
-  const emojiByMeal = { 'Café da manhã': '☀️', 'Almoço': '🍛', 'Lanche': '🥪', 'Jantar': '🌙' };
+  const emojiByMeal = { 'Café Da Manhã': '☀️', 'Almoço': '🍛', 'Lanche': '🥪', 'Jantar': '🌙' };
 
   const meals = (data.meals || []).map(m => {
-    const items = Array.isArray(m.items)
-      ? m.items
-      : String(m.suggestion || '').split('+').map(i => ({ label: i.trim(), calories: null })).filter(i => i.label);
-
-    const mealCalories = m.calories || Math.round((data.calories || 0) / 4);
-    return `<div class="day"><div class="meal-head"><strong>${emojiByMeal[m.meal] || '🍽️'} ${m.meal}</strong><span>${mealCalories} kcal</span></div><ul class="meal-list">${items.map(i => `<li>${i.label}${i.calories ? ` <small>(${i.calories} kcal)</small>` : ''}</li>`).join('')}</ul></div>`;
+    const mealName = cap(String(m.meal || 'Refeição'));
+    const items = Array.isArray(m.items) ? m.items : [];
+    const mealCalories = m.calories || Math.round((data.calories || 0) / Math.max(1, (data.meals || []).length || 4));
+    return `<div class="day"><div class="meal-head"><strong>${emojiByMeal[mealName] || '🍽️'} ${mealName}</strong><span>${mealCalories} kcal</span></div><ul class="meal-list">${items.map(i => `<li>${cap(i.label)} <small>(${i.calories || 0} kcal • P ${i.protein_g || 0}g • C ${i.carbs_g || 0}g • G ${i.fat_g || 0}g)</small></li>`).join('')}</ul><small>Macros da refeição: P ${m.protein_g || 0}g • C ${m.carbs_g || 0}g • G ${m.fat_g || 0}g</small></div>`;
   }).join('');
 
   out.innerHTML = `<div class="day"><strong>Meta diária:</strong> ${data.calories || data.calories} kcal • P ${data.protein_g || data.macros?.protein_g}g • C ${data.carbs_g || data.macros?.carbs_g}g • G ${data.fat_g || data.macros?.fat_g}g</div>${meals}`;
@@ -217,6 +286,73 @@ async function initRegister() {
   });
 }
 
+async function sendTrainingAi() {
+  if (!state.subscriptionActive) return setMsg('checkin-msg', featureGate('a IA de treino'), true);
+  const msg = $('ai-chat-input').value.trim(); if (!msg) return;
+  addAiLog('Você', msg); $('ai-chat-input').value = '';
+
+  if (state.aiPendingConfirm && /^confirme$/i.test(msg) && state.aiSuggestedPlan) {
+    const targetId = state.aiTargetWorkoutId || state.currentWorkout?.id;
+    if (!targetId) return addAiLog('IA', 'Escolha um treino no seletor para eu aplicar o ajuste.');
+    const current = state.workoutCache.find(w => w.id === targetId);
+    const split = current?.split_name || state.currentWorkout?.split_name || 'Full Body';
+    const resApply = await fetch(`/api/workouts/${targetId}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ split_name: split, plan: state.aiSuggestedPlan }) });
+    if (resApply.ok) {
+      await fetch(`/api/workouts/${targetId}/activate`, { method: 'POST', headers: authHeaders() });
+      addAiLog('IA', 'Treino atualizado com sucesso.');
+      setMsg('update-msg', 'Treino atualizado com sucesso.');
+      state.aiPendingConfirm = false; state.aiSuggestedPlan = null;
+      await loadWorkoutList();
+      return;
+    }
+  }
+
+  const payload = { message: msg };
+  if (state.aiTargetWorkoutId) payload.workout_id = state.aiTargetWorkoutId;
+  if (!payload.workout_id && state.currentWorkout?.id) payload.workout_id = state.currentWorkout.id;
+
+  const res = await fetch('/api/ai/checkin-feedback', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (!res.ok) return addAiLog('IA', data.error || 'Não consegui processar agora.');
+
+  state.aiSuggestedPlan = data.suggestedPlan || null;
+  if (state.aiSuggestedPlan) {
+    state.aiPendingConfirm = true;
+    state.aiPendingMeta = data.summary || 'o treino';
+    addAiLog('IA', `Irei atualizar então ${state.aiPendingMeta}. Digite confirme para confirmar.`);
+  } else {
+    addAiLog('IA', data.aiReply || 'Posso tirar dúvidas de execução, progressão e recuperação.');
+  }
+}
+
+async function sendNutritionAi() {
+  if (!state.subscriptionActive || state.subscription?.package_code !== 'plan_super') return setMsg('nutrition-msg', featureGate('a IA de dieta'), true);
+  const q = $('nutrition-chat-input').value.trim();
+  if (!q) return;
+  addAiLog('Você', q, 'nutrition-chat-log');
+  $('nutrition-chat-input').value = '';
+  const res = await fetch('/api/ai/nutrition-chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ message: q }) });
+  const data = await res.json();
+  addAiLog('IA', res.ok ? data.aiReply : (data.error || 'Falha'), 'nutrition-chat-log');
+}
+
+function renderLive() {
+  const out = $('live-output');
+  if (!out) return;
+  if (!state.liveSequence.length) return out.innerHTML = 'Abra um treino para iniciar o modo treino.';
+  const cur = state.liveSequence[state.liveIndex];
+  out.innerHTML = `<strong>${cur.day} • ${cur.name}</strong><p>Séries: ${cur.sets} | Reps: ${cur.reps} | Descanso recomendado: ${cur.rest} | Tempo sugerido: ${cur.estimated_seconds || 90}s</p>`;
+}
+
+function bindEnterBehavior(el, sendFn) {
+  el?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.ctrlKey) {
+      e.preventDefault();
+      sendFn();
+    }
+  });
+}
+
 async function initApp() {
   await routeApp();
   $('btn-logout').onclick = () => { localStorage.removeItem('fitai_token'); window.location.href = '/'; };
@@ -228,27 +364,33 @@ async function initApp() {
   $('btn-refresh').onclick = fetchCurrentWorkout;
   $('btn-rename').onclick = () => state.currentWorkout?.id && window.renameWorkout(state.currentWorkout.id, state.currentWorkout.name);
 
-  $('tab-training').onclick = () => { $('tab-training').classList.add('active'); $('tab-nutrition').classList.remove('active'); $('panel-training').classList.remove('hidden'); $('panel-nutrition').classList.add('hidden'); };
-  $('tab-nutrition').onclick = () => { $('tab-nutrition').classList.add('active'); $('tab-training').classList.remove('active'); $('panel-nutrition').classList.remove('hidden'); $('panel-training').classList.add('hidden'); };
+  $('tab-training').onclick = () => setTab('training');
+  $('tab-nutrition').onclick = () => setTab('nutrition');
+  $('tab-schedule').onclick = () => { setTab('schedule'); renderSchedule(); };
 
   $('btn-create-workout').onclick = async () => {
-    if (!requireSubscription()) return;
     const res = await fetch('/api/workouts/create', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: $('new-workout-name').value.trim() }) });
-    if (res.ok) { $('new-workout-name').value = ''; await loadWorkoutList(); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg('checkin-msg', data.error || featureGate('criar mais treinos'), true);
+    $('new-workout-name').value = ''; await loadWorkoutList();
   };
 
   $('onboarding-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault(); if (!requireSubscription()) return;
-    const payload = { objective: $('objective').value, experience_level: $('experience_level').value, days_per_week: Number($('days_per_week').value), time_per_session: Number($('time_per_session').value), equipment: $('equipment').value, limitations: $('limitations').value, split_preference: $('split_preference').value };
+    e.preventDefault();
+    const payload = { objective: $('objective').value || 'hipertrofia', experience_level: $('experience_level').value || 'iniciante', days_per_week: Number($('days_per_week').value), time_per_session: Number($('time_per_session').value), equipment: $('equipment').value || 'casa', limitations: $('limitations').value, split_preference: $('split_preference').value };
     const res = await fetch('/api/onboarding', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
     if (!res.ok) return setMsg('onboarding-msg', 'Erro no onboarding', true);
     setMsg('onboarding-msg', 'Perfil salvo e treino criado!'); $('onboarding-section').classList.add('hidden'); await loadWorkoutList();
   });
 
-  $('btn-edit-text').onclick = () => { if (!state.currentWorkout) return; $('plan-text-view').contentEditable = 'true'; $('btn-save-text').classList.remove('hidden'); $('btn-cancel-text').classList.remove('hidden'); };
+  $('btn-edit-text').onclick = () => {
+    if (!state.subscriptionActive) return setMsg('checkin-msg', featureGate('edição manual'), true);
+    if (!state.currentWorkout) return;
+    $('plan-text-view').contentEditable = 'true'; $('btn-save-text').classList.remove('hidden'); $('btn-cancel-text').classList.remove('hidden');
+  };
   $('btn-cancel-text').onclick = () => { if (!state.currentWorkout) return; $('plan-text-view').textContent = formatPlanAsText(state.currentWorkout.plan); $('plan-text-view').contentEditable = 'false'; $('btn-save-text').classList.add('hidden'); $('btn-cancel-text').classList.add('hidden'); };
   $('btn-save-text').onclick = async () => {
-    if (!requireSubscription() || !state.currentWorkout) return;
+    if (!state.subscriptionActive || !state.currentWorkout) return setMsg('checkin-msg', featureGate('salvar ajustes'), true);
     const parsed = parseTextToPlan($('plan-text-view').innerText || '');
     const res = await fetch(`/api/workouts/${state.currentWorkout.id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ split_name: state.currentWorkout.split_name, plan: parsed }) });
     if (!res.ok) return setMsg('checkin-msg', 'Erro ao salvar ajustes', true);
@@ -256,54 +398,18 @@ async function initApp() {
   };
 
   $('checkin-form').addEventListener('submit', async (e) => {
-    e.preventDefault(); if (!requireSubscription() || !state.currentWorkout?.id) return setMsg('checkin-msg', 'Abra um treino antes do check-in.', true);
+    e.preventDefault(); if (!state.subscriptionActive || !state.currentWorkout?.id) return setMsg('checkin-msg', featureGate('check-in e ajuste automático'), true);
     const payload = { workout_id: state.currentWorkout.id, week_label: $('week_label').value, completed_percent: Number($('completed_percent').value), difficulty: Number($('difficulty').value), energy: Number($('energy').value), pain: Number($('pain').value), notes: $('notes').value };
     const res = await fetch('/api/workouts/checkin', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
     if (!res.ok) return setMsg('checkin-msg', 'Erro no check-in', true);
     setMsg('checkin-msg', 'Check-in aplicado e treino recalibrado!');
-    addAiLog('IA', 'Recebi seu check-in e usei isso para recalibrar o plano. Pode mandar ajustes finos por mensagem.');
     await openWorkout(state.currentWorkout.id); await loadWorkoutList();
   });
 
   $('ai-workout-target').onchange = () => { state.aiTargetWorkoutId = $('ai-workout-target').value ? Number($('ai-workout-target').value) : null; };
-  $('btn-ai-send').onclick = async () => {
-    if (!requireSubscription()) return;
-    const msg = $('ai-chat-input').value.trim(); if (!msg) return;
-    addAiLog('Você', msg); $('ai-chat-input').value = '';
+  $('btn-ai-send').onclick = sendTrainingAi;
 
-    if (state.aiPendingConfirm && /(confirmo|sim|pode aplicar)/i.test(msg) && state.aiSuggestedPlan) {
-      const targetId = state.aiTargetWorkoutId || state.currentWorkout?.id;
-      if (!targetId) return addAiLog('IA', 'Escolha um treino no seletor para eu aplicar o ajuste.');
-      const current = state.workoutCache.find(w => w.id === targetId);
-      const split = current?.split_name || state.currentWorkout?.split_name || 'Full Body';
-      const resApply = await fetch(`/api/workouts/${targetId}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ split_name: split, plan: state.aiSuggestedPlan }) });
-      if (resApply.ok) {
-        await fetch(`/api/workouts/${targetId}/activate`, { method: 'POST', headers: authHeaders() });
-        addAiLog('IA', 'Treino atualizado e definido como ativo. Clique em "Atualizar treino aberto" para carregar os ajustes.');
-        state.aiPendingConfirm = false; state.aiSuggestedPlan = null;
-        await loadWorkoutList();
-        return;
-      }
-    }
-
-    const payload = { message: msg };
-    if (state.aiTargetWorkoutId) payload.workout_id = state.aiTargetWorkoutId;
-    const byName = $('ai-workout-name').value.trim();
-    if (byName) payload.workout_name = byName;
-    if (!payload.workout_id && !payload.workout_name && state.currentWorkout?.id) payload.workout_id = state.currentWorkout.id;
-
-    const res = await fetch('/api/ai/checkin-feedback', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok) return addAiLog('IA', data.error || 'Não consegui processar agora.');
-
-    state.aiSuggestedPlan = data.suggestedPlan || null;
-    if (state.aiSuggestedPlan) {
-      state.aiPendingConfirm = true;
-      addAiLog('IA', `${data.aiReply} Qual treino quer atualizar? Use o seletor ou nome. Quando estiver certo, responda "confirmo".`);
-    } else {
-      addAiLog('IA', data.aiReply || 'Posso tirar dúvidas de execução, progressão e recuperação.');
-    }
-  };
+  $('nut-has-routine').onchange = () => $('nut-routine').classList.toggle('hidden', $('nut-has-routine').value !== 'sim');
 
   $('nutrition-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -317,9 +423,10 @@ async function initApp() {
       age: Number($('nut-age').value),
       sex: $('nut-sex').value,
       activity_level: $('nut-activity').value,
-      routine_notes: $('nut-routine').value,
+      routine_notes: $('nut-has-routine').value === 'sim' ? $('nut-routine').value : '',
       allergies: $('nut-allergies').value,
-      disliked_foods: $('nut-dislikes').value
+      disliked_foods: $('nut-dislikes').value,
+      meals_count: Number($('nut-meals-count').value)
     };
 
     await fetch('/api/profile/diet', {
@@ -345,35 +452,32 @@ async function initApp() {
   });
 
   $('btn-pdf').onclick = async () => {
-    if (!requireSubscription()) return;
+    if (!state.subscriptionActive) return setMsg('checkin-msg', featureGate('exportação em PDF'), true);
     const url = state.currentWorkout?.id ? `/api/export/pdf?workoutId=${state.currentWorkout.id}` : '/api/export/pdf';
     const res = await fetch(url, { headers: authHeaders() }); if (!res.ok) return setMsg('checkin-msg', 'Erro ao exportar PDF', true);
     const blob = await res.blob(); const ub = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = ub; a.download = `treino-fitai-${new Date().toISOString().slice(0,10)}.pdf`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(ub);
   };
 
-  $('btn-nutrition-chat').onclick = async () => {
-    const q = $('nutrition-chat-input').value.trim();
-    if (!q) return;
-    const log = $('nutrition-chat-log');
-    log.innerHTML += `<p class='chat-msg'><strong>Você:</strong> ${q}</p>`;
-    $('nutrition-chat-input').value = '';
-    const res = await fetch('/api/ai/nutrition-chat', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ message: q }) });
-    const data = await res.json();
-    log.innerHTML += `<p class='chat-msg'><strong>IA:</strong> ${res.ok ? data.aiReply : (data.error || 'Falha')}</p>`;
-    log.scrollTop = log.scrollHeight;
-  };
+  $('btn-nutrition-chat').onclick = sendNutritionAi;
+  bindEnterBehavior($('ai-chat-input'), sendTrainingAi);
+  bindEnterBehavior($('nutrition-chat-input'), sendNutritionAi);
 
-  function renderLive() {
-    const out = $('live-output');
-    if (!out) return;
-    if (!state.liveSequence.length) return out.innerHTML = 'Abra um treino para iniciar o modo treino.';
-    const cur = state.liveSequence[state.liveIndex];
-    out.innerHTML = `<strong>${cur.day} • ${cur.name}</strong><p>Séries: ${cur.sets} | Reps: ${cur.reps} | Descanso: ${cur.rest} | Tempo sugerido: ${cur.estimated_seconds || 90}s</p>`;
-  }
   $('btn-start-live').onclick = () => { state.liveIndex = 0; $('live-training')?.classList.remove('hidden'); renderLive(); };
   $('btn-prev-live').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = (state.liveIndex - 1 + state.liveSequence.length) % state.liveSequence.length; renderLive(); };
   $('btn-next-live').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = (state.liveIndex + 1) % state.liveSequence.length; renderLive(); };
-  $('btn-exit-live').onclick = () => { $('live-training')?.classList.add('hidden'); };
+  $('btn-exit-live').onclick = () => { $('live-output').innerHTML = 'Modo treino pausado. Seu treino permanece salvo.'; };
+
+  $('btn-toggle-timer').onclick = () => $('rest-timer').classList.toggle('hidden');
+  $('btn-start-timer').onclick = () => {
+    if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; return; }
+    state.timer.id = setInterval(() => {
+      state.timer.sec += 1;
+      const mm = String(Math.floor(state.timer.sec / 60)).padStart(2, '0');
+      const ss = String(state.timer.sec % 60).padStart(2, '0');
+      $('rest-time').textContent = `${mm}:${ss}`;
+    }, 1000);
+  };
+  $('btn-reset-timer').onclick = () => { state.timer.sec = 0; $('rest-time').textContent = '00:00'; if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; } };
 
   $('btn-close-modal').onclick = () => { $('exercise-modal').classList.add('hidden'); $('exercise-frame').src = ''; };
 }
