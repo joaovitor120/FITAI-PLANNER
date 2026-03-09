@@ -25,29 +25,39 @@
         ativa o plano para liberar o sistema completo.
       </p>
 
-      <div class="pricing-grid">
-        <article class="card glass plan">
-          <h3>Plano Performance 12M</h3>
-          <div class="price">R$99<span>/mês</span></div>
+      <div class="actions"><a href="/login.html" class="btn cta">Entrar na sua conta</a></div>
+      <div class="pricing-grid pricing-grid-3">
+        <article class="card glass plan" id="card-plan-12m">
+          <h3>Plano FitAI</h3>
+          <div class="price">R$39,90<span>/mês</span></div>
           <ul>
             <li>12 meses de acesso</li>
             <li>Treinos ilimitados</li>
             <li>Ajuste automático semanal</li>
             <li>Exportação em PDF</li>
           </ul>
-          <button id="buy-12m" class="btn neon">Confirmar pagamento 12M</button>
+          <button id="buy-12m" class="btn">Confirmar pagamento FitAI</button>
         </article>
 
-        <article class="card glass plan">
-          <h3>Plano Focus 6M</h3>
-          <div class="price">R$119<span>/mês</span></div>
+        <article class="card glass plan" id="card-plan-6m">
+          <h3>Plano FitAI Plus</h3>
+          <div class="price">R$49,90<span>/mês</span></div>
           <ul>
             <li>6 meses de acesso</li>
             <li>Treinos ilimitados</li>
             <li>Ajuste automático semanal</li>
             <li>Exportação em PDF</li>
           </ul>
-          <button id="buy-6m" class="btn">Confirmar pagamento 6M</button>
+          <button id="buy-6m" class="btn">Confirmar pagamento Plus</button>
+        </article>
+
+        <article class="card glass plan" id="card-plan-pro">
+          <h3>Plano FitAI Pro</h3>
+          <div class="price">R$59,90<span>/mês</span></div>
+          <ul>
+            <li>Treinos ilimitados</li><li>Ajuste automático semanal</li><li>Dieta + IA Nutricional</li>
+          </ul>
+          <button id="buy-pro" class="btn cta">Confirmar pagamento Pro</button>
         </article>
       </div>
 
@@ -101,9 +111,13 @@
         return;
       }
 
-      const label = sub.package_code === 'plan_12m' ? '12 meses (R$99/mês)' : '6 meses (R$119/mês)';
+      const labelMap = { plan_12m: 'Plano FitAI (R$39,90/mês)', plan_6m: 'Plano FitAI Plus (R$49,90/mês)', plan_pro: 'Plano FitAI Pro (R$59,90/mês)' };
+      const label = labelMap[sub.package_code] || sub.package_code;
       const end = sub.ends_at ? new Date(sub.ends_at).toLocaleDateString('pt-BR') : '—';
       statusBox.innerHTML = `<strong>Status:</strong> ativo<br/><small>Plano: ${label} • válido até ${end}</small>`;
+      ['plan-12m','plan-6m','plan-pro'].forEach(id => document.getElementById(`card-${id}`)?.classList.remove('selected-plan'));
+      const cardId = sub.package_code === 'plan_12m' ? 'card-plan-12m' : sub.package_code === 'plan_6m' ? 'card-plan-6m' : 'card-plan-pro';
+      document.getElementById(cardId)?.classList.add('selected-plan');
     }
 
     async function mockCheckout(packageCode) {
@@ -128,6 +142,7 @@
 
     document.getElementById('buy-12m').addEventListener('click', () => mockCheckout('plan_12m'));
     document.getElementById('buy-6m').addEventListener('click', () => mockCheckout('plan_6m'));
+    document.getElementById('buy-pro').addEventListener('click', () => mockCheckout('plan_pro'));
 
     refreshStatus();
   </script>

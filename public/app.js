@@ -13,7 +13,8 @@ const state = {
   liveSequence: [],
   liveIndex: 0,
   timer: { sec: 0, id: null },
-  profileDaysPerWeek: null
+  profileDaysPerWeek: null,
+  doneDays: new Set()
 };
 
 const $ = (id) => document.getElementById(id);
@@ -41,9 +42,12 @@ function renderSubscriptionStatus() {
   const el = $('subscription-status');
   if (!el) return;
   if (!state.subscription || state.subscription.status !== 'active') return el.textContent = 'Sem assinatura ativa (modo demonstração).';
-  const labels = { plan_12m: '12 meses (R$99/mês)', plan_6m: '6 meses (R$119/mês)', plan_super: 'FitAI Super (R$149/mês)' };
+  const labels = { plan_12m: 'Plano FitAI (R$39,90/mês)', plan_6m: 'Plano FitAI Plus (R$49,90/mês)', plan_pro: 'Plano FitAI Pro (R$59,90/mês)' };
   const end = state.subscription.ends_at ? new Date(state.subscription.ends_at).toLocaleDateString('pt-BR') : '—';
   el.textContent = `Plano atual: ${labels[state.subscription.package_code] || state.subscription.package_code} • ativo até ${end}`;
+  ['buy-12m','buy-6m','buy-pro'].forEach((id) => $(id)?.classList.remove('active'));
+  const activeBtn = state.subscription.package_code === 'plan_12m' ? 'buy-12m' : state.subscription.package_code === 'plan_6m' ? 'buy-6m' : 'buy-pro';
+  $(activeBtn)?.classList.add('active');
 }
 
 function addAiLog(author, text, box = 'ai-chat-log') {
@@ -116,14 +120,14 @@ function renderWorkout(workout) {
   const equipmentTag = workout.equipment || workout.category || 'Não informado';
   $('workout-output').innerHTML = `<p><strong>${workout.name}</strong> • v${workout.version} • Split: ${workout.split_name} • Categoria: ${equipmentTag}</p>` + workout.plan.map(day => `
   <div class="day"><strong>${day.day} — ${day.focus}</strong><br/><small>${day.intensity}</small><ul>
-  ${(day.exercises || []).map(ex => {
-    const warm = Math.max(1, Math.floor(Number(ex.sets || 3) / 3));
+  ${(day.exercises || []).map((ex, exIndex) => {
+    const warm = exIndex === 0 ? 1 : 0;
     const rec = 1;
     const work = Math.max(1, Number(ex.sets || 3) - warm - rec);
     const seriesLines = [
-      `${infoTip('Séries de aquecimento', 'Carga baixa para preparar o músculo/articulação')}: ${warm}x15-20 • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: 4+`,
+      ...(warm ? [`${infoTip('Séries de aquecimento', 'Carga baixa para preparar o músculo/articulação')}: ${warm}x15-20 • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: 4+`] : []),
       `${infoTip('Séries de reconhecimento', 'Carga para reconhecer o movimento sem falhar')}: ${rec}x<10 • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: 2-3`,
-      `${infoTip('Séries de trabalho', 'Séries principais próximas da falha técnica')}: ${work}x${ex.reps} • ${infoTip('RIR', 'Repetições em reserva antes da falha')}: ${day.intensity}`
+      `${infoTip('Séries de trabalho', 'Séries principais próximas da falha técnica')}: ${work}x${ex.reps} • Intensidade: ${day.intensity}`
     ];
     return `<li><strong>${ex.name}</strong> (${ex.rest}) <button class="btn btn-mini" onclick="openExercise('${String(ex.name).replace(/'/g, "\\'")}')">Ver execução</button><br/>
     <small>${seriesLines.join('<br/>')}</small></li>`;
@@ -165,7 +169,15 @@ async function loadWorkoutList() {
   const list = $('workout-list'); if (!list) return;
   if (!state.workoutCache.length) return list.innerHTML = '<p>Nenhum treino criado ainda.</p>';
   list.innerHTML = state.workoutCache.map(w => `<div class="day"><strong>${w.name}</strong> • v${w.version} • ${w.split_name} ${w.is_active ? '✅ ativo' : ''}
-  <div class="actions"><button class="btn" onclick="activateWorkout(${w.id})">Ativar</button><button class="btn" onclick="openWorkout(${w.id})">Abrir treino</button><button class="btn" onclick="renameWorkout(${w.id}, '${String(w.name).replace(/'/g, "\\'")}')">Renomear</button></div></div>`).join('');
+  <div class="actions"><button class="btn" data-act="activate" data-id="${w.id}">Ativar</button><button class="btn" data-act="open" data-id="${w.id}">Abrir treino</button><button class="btn" data-act="rename" data-id="${w.id}" data-name="${String(w.name).replace(/"/g, '&quot;')}">Renomear</button></div></div>`).join('');
+  list.querySelectorAll('button[data-act]').forEach((b) => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.id);
+      if (b.dataset.act === 'activate') return window.activateWorkout(id);
+      if (b.dataset.act === 'open') return window.openWorkout(id);
+      if (b.dataset.act === 'rename') return window.renameWorkout(id, b.dataset.name || 'Meu treino');
+    };
+  });
 }
 
 window.activateWorkout = async (id) => { await fetch(`/api/workouts/${id}/activate`, { method: 'POST', headers: authHeaders() }); await loadWorkoutList(); await openWorkout(id); };
@@ -214,47 +226,94 @@ function getWeeklyTrainPattern(split, freq) {
   return [1,3,5];
 }
 
+function getStreak() {
+  return Number(localStorage.getItem('fitai_streak_days') || 0);
+}
+
+function getIsoDate(d = new Date()) {
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 10);
+}
+
+function getCurrentWeekLabel() {
+  const d = new Date();
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+function markWorkoutDone(isoDate = getIsoDate()) {
+  state.doneDays.add(isoDate);
+  localStorage.setItem('fitai_done_days', JSON.stringify(Array.from(state.doneDays)));
+  const today = getIsoDate();
+  const last = localStorage.getItem('fitai_streak_last_day');
+  let streak = getStreak();
+  if (last !== today) {
+    const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    streak = last === y ? streak + 1 : 1;
+    localStorage.setItem('fitai_streak_days', String(streak));
+    localStorage.setItem('fitai_streak_last_day', today);
+  }
+  if ($('streak-box')) $('streak-box').textContent = `🔥 Sequência: ${streak} dias`;
+  if ($('day-done-toast')) $('day-done-toast').textContent = '🎉 Treino concluído! Mandou bem!';
+}
+
 function renderSchedule() {
-  if (!state.currentWorkout?.plan?.length || !$('schedule-grid')) return;
+  if (!$('schedule-grid')) return;
+  if ($('streak-box')) $('streak-box').textContent = `🔥 Sequência: ${getStreak()} dias`;
+  if (!state.currentWorkout?.plan?.length) { $('schedule-grid').innerHTML = '<div class="day">Nenhum treino ativo encontrado.</div>'; return; }
   const now = new Date();
+  const todayIso = getIsoDate(now);
   const y = now.getFullYear();
   const m = now.getMonth();
   const total = new Date(y, m + 1, 0).getDate();
   const freq = Math.max(3, Math.min(6, state.profileDaysPerWeek || state.currentWorkout.plan.length || 3));
   const pattern = getWeeklyTrainPattern(state.currentWorkout.split_name, freq);
-  $('schedule-month').textContent = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  $('schedule-month').textContent = `${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} • Semana atual: ${getCurrentWeekLabel()}`;
 
   const days = [];
   let idx = 0;
   const dayToPlan = {};
   for (let d = 1; d <= total; d++) {
     const dt = new Date(y, m, d);
+    const iso = getIsoDate(dt);
     const weekDay = dt.getDay();
     const isTrainDay = pattern.includes(weekDay);
     const planDay = isTrainDay ? state.currentWorkout.plan[idx % state.currentWorkout.plan.length] : null;
-    if (isTrainDay) {
-      dayToPlan[d] = planDay;
-      idx++;
-    }
-    days.push(`<button class="day cal-day ${isTrainDay ? 'train' : ''}" data-day="${d}">${d}${isTrainDay ? `<br/><small>${planDay.focus}</small>` : ''}</button>`);
+    const isToday = iso === todayIso;
+    const done = state.doneDays.has(iso);
+    if (isTrainDay) { dayToPlan[d] = { ...planDay, iso }; idx++; }
+    days.push(`<button class="day cal-day ${isTrainDay ? 'train clickable' : 'rest'} ${isToday ? 'today' : ''}" data-day="${d}" data-iso="${iso}">${d}<br/><small>${isTrainDay ? planDay.focus : 'Descanso'}</small>${isTrainDay ? `<br/><span class="cal-check ${done ? 'done' : ''}">${done ? '✔ Feito' : 'Marcar treino'}</span>` : ''}</button>`);
   }
   $('schedule-grid').innerHTML = days.join('');
 
   [...document.querySelectorAll('.cal-day')].forEach((btn) => btn.onclick = () => {
     const day = Number(btn.dataset.day);
+    const iso = btn.dataset.iso;
     const selected = dayToPlan[day];
-    if (!selected) {
-      $('schedule-detail').classList.remove('hidden');
-      $('schedule-detail').innerHTML = `<strong>Dia ${day}</strong><p>Dia de descanso.</p>`;
-      $('live-training').classList.add('hidden');
-      return;
-    }
-
-    $('schedule-detail').classList.remove('hidden');
-    $('schedule-detail').innerHTML = `<strong>Dia ${day} • ${selected.focus}</strong><p>${selected.exercises.map(ex => `${ex.name} (${ex.sets}x${ex.reps})`).join(' • ')}</p><button id="schedule-start-live" class="btn neon">Entrar no modo treino</button>`;
-    $('schedule-start-live').onclick = () => {
-      $('live-training').classList.remove('hidden');
-      renderLiveFromDay(selected);
+    if (!selected) return;
+    $('schedule-modal-title').textContent = `Dia ${day} • ${selected.focus}`;
+    $('schedule-modal-body').innerHTML = `<div class="modal-train-list">${selected.exercises.map((ex, i) => `<div class="series-item"><div><strong>${ex.name}</strong><br/><small>${i === 0 ? 'Aquecimento + ' : ''}${ex.sets}x${ex.reps} • descanso ${ex.rest}</small></div><button class="series-check" data-series="${i}" aria-label="Marcar série"></button></div>`).join('')}</div><div class="actions"><button id="schedule-mark-done" class="btn neon">Concluir treino</button></div>`;
+    $('schedule-modal').classList.remove('hidden');
+    document.querySelectorAll('.series-check').forEach((s) => {
+      s.onclick = () => s.classList.toggle('done');
+    });
+    $('schedule-mark-done').onclick = () => {
+      if (iso !== getIsoDate()) {
+        const msg = iso < getIsoDate() ? 'Esse treino já passou.' : 'Esse treino ainda vai acontecer.';
+        setMsg('day-done-toast', msg, true);
+        setMsg('schedule-alert', `⚠️ ${msg}`, true);
+        alert(msg);
+        return;
+      }
+      markWorkoutDone(iso);
+      setMsg('day-done-toast', '✅ Treino concluído com sucesso! Excelente trabalho.');
+      setMsg('schedule-alert', '✅ Parabéns! Seu treino de hoje foi registrado.');
+      $('schedule-modal').classList.add('hidden');
+      renderSchedule();
     };
   });
 }
@@ -266,14 +325,24 @@ async function routeApp() {
   const me = await meRes.json();
   state.subscription = me.subscription || null;
   state.subscriptionActive = me.subscription?.status === 'active';
+  state.doneDays = new Set(JSON.parse(localStorage.getItem('fitai_done_days') || '[]'));
   state.demoMode = !state.subscriptionActive;
   renderSubscriptionStatus();
   $('demo-banner')?.classList.toggle('hidden', !state.demoMode);
 
   const workoutRes = await fetch('/api/workouts/current', { headers: authHeaders() });
-  if (workoutRes.status === 404) $('onboarding-section')?.classList.remove('hidden'); else $('onboarding-section')?.classList.add('hidden');
+  if (workoutRes.status === 404) {
+    $('onboarding-section')?.classList.remove('hidden');
+  } else {
+    $('onboarding-section')?.classList.add('hidden');
+    if (workoutRes.ok) renderWorkout(await workoutRes.json());
+  }
   $('dashboard-section')?.classList.add('hidden');
   await loadWorkoutList();
+  if (!state.currentWorkout && state.workoutCache.length) {
+    const active = state.workoutCache.find(w => w.is_active) || state.workoutCache[0];
+    if (active?.id) await openWorkout(active.id);
+  }
 
   const profileRes = await fetch('/api/profile', { headers: authHeaders() });
   if (profileRes.ok) {
@@ -298,6 +367,33 @@ async function routeApp() {
 
   const nut = await fetch('/api/nutrition/plan', { headers: authHeaders() });
   if (nut.ok) renderNutrition(await nut.json());
+  await loadNutritionPlans();
+  await loadCheckinHistory();
+}
+
+async function loadNutritionPlans() {
+  const res = await fetch('/api/nutrition/plans', { headers: authHeaders() });
+  if (!res.ok || !$('nutrition-plan-list')) return;
+  const data = await res.json();
+  $('nutrition-plan-list').innerHTML = (data.plans || []).map(p => `<div class="actions"><span>${p.name} ${p.is_active ? '✅ ativo' : '⚪ inativo'}</span><button class="btn btn-mini" data-nut-act="activate" data-id="${p.id}">Ativar</button><button class="btn btn-mini" data-nut-act="deactivate" data-id="${p.id}">Inativar</button><button class="btn btn-mini" data-nut-act="rename" data-id="${p.id}" data-name="${String(p.name).replace(/"/g, '&quot;')}">Renomear</button></div>`).join('') || '<p>Nenhum plano alimentar criado.</p>';
+  $('nutrition-plan-list').querySelectorAll('button[data-nut-act]').forEach((b) => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.id);
+      if (b.dataset.nutAct === 'activate') {
+        await fetch(`/api/nutrition/plans/${id}/activate`, { method: 'POST', headers: authHeaders() });
+      }
+      if (b.dataset.nutAct === 'deactivate') {
+        await fetch(`/api/nutrition/plans/${id}/deactivate`, { method: 'POST', headers: authHeaders() });
+      }
+      if (b.dataset.nutAct === 'rename') {
+        const name = prompt('Novo nome do plano alimentar:', b.dataset.name || 'Plano alimentar');
+        if (name?.trim()) await fetch(`/api/nutrition/plans/${id}/rename`, { method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ name: name.trim() }) });
+      }
+      const current = await fetch('/api/nutrition/plan', { headers: authHeaders() });
+      if (current.ok) renderNutrition(await current.json());
+      await loadNutritionPlans();
+    };
+  });
 }
 
 function renderNutrition(data) {
@@ -311,11 +407,16 @@ function renderNutrition(data) {
     return `<div class="day"><div class="meal-head"><strong>${emojiByMeal[mealName] || '🍽️'} ${mealName}</strong><span>${mealCalories} kcal • P ${m.protein_g || 0}g • C ${m.carbs_g || 0}g • G ${m.fat_g || 0}g</span></div><ul class="meal-list">${items.map(i => `<li>${cap(i.label)} <small>(${i.calories || 0} kcal • P ${i.protein_g || 0}g • C ${i.carbs_g || 0}g • G ${i.fat_g || 0}g)</small></li>`).join('')}</ul></div>`;
   }).join('');
 
-  out.innerHTML = `<div class="day"><strong>Meta diária:</strong> ${data.calories || data.calories} kcal • P ${data.protein_g || data.macros?.protein_g}g • C ${data.carbs_g || data.macros?.carbs_g}g • G ${data.fat_g || data.macros?.fat_g}g</div>${meals}`;
+  out.innerHTML = `<div class="day"><strong>${data.name || 'Plano alimentar'}</strong><br/><strong>Meta diária:</strong> ${data.calories || data.calories} kcal • P ${data.protein_g || data.macros?.protein_g}g • C ${data.carbs_g || data.macros?.carbs_g}g • G ${data.fat_g || data.macros?.fat_g}g</div>${meals}`;
 }
 
 async function initLogin() {
-  if (state.token) return window.location.href = '/app.html';
+  if (state.token) {
+    const meRes = await fetch('/api/me', { headers: authHeaders() }).catch(() => null);
+    if (meRes?.ok) return window.location.href = '/app.html';
+    localStorage.removeItem('fitai_token');
+    state.token = null;
+  }
   $('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('email').value, password: $('password').value }) });
@@ -336,6 +437,11 @@ async function sendTrainingAi() {
   if (!state.subscriptionActive) return setMsg('checkin-msg', featureGate('a IA de treino'), true);
   const msg = $('ai-chat-input').value.trim(); if (!msg) return;
   addAiLog('Você', msg); $('ai-chat-input').value = '';
+
+  const normalizedMsg = normalize(msg);
+  if ((normalizedMsg.includes('no lugar da flexao') || normalizedMsg.includes('substituir flexao') || normalizedMsg.includes('trocar flexao')) && !normalizedMsg.includes('confirme')) {
+    return addAiLog('IA', 'Sim, faz total sentido substituir. Opções equivalentes: 1) Supino com halteres (3-4x8-12), 2) Flexão inclinada (3x10-15), 3) Crucifixo no chão (3x12-15). Escolha conforme equipamento e dor articular.');
+  }
 
   if (state.aiPendingConfirm && /^confirme$/i.test(msg) && state.aiSuggestedPlan) {
     const targetId = state.aiTargetWorkoutId || state.currentWorkout?.id;
@@ -372,7 +478,7 @@ async function sendTrainingAi() {
 }
 
 async function sendNutritionAi() {
-  if (!state.subscriptionActive || state.subscription?.package_code !== 'plan_super') return setMsg('nutrition-msg', featureGate('a IA de dieta'), true);
+  if (!state.subscriptionActive || state.subscription?.package_code !== 'plan_pro') return setMsg('nutrition-msg', featureGate('a IA de dieta'), true);
   const q = $('nutrition-chat-input').value.trim();
   if (!q) return;
   addAiLog('Você', q, 'nutrition-chat-log');
@@ -387,7 +493,7 @@ function renderLive() {
   if (!out) return;
   if (!state.liveSequence.length) return out.innerHTML = 'Abra um treino para iniciar o modo treino.';
   const cur = state.liveSequence[state.liveIndex];
-  const warm = Math.max(1, Math.floor(Number(cur.sets || 3) / 3));
+  const warm = state.liveIndex === 0 ? 1 : 0;
   const rec = 1;
   const work = Math.max(1, Number(cur.sets || 3) - warm - rec);
   const restMatch = String(cur.rest || '').match(/(\d+)/);
@@ -396,7 +502,7 @@ function renderLive() {
   const checks = [];
   for (let i = 1; i <= warm; i++) checks.push(`<label><input type="checkbox"/> Aquecimento ${i}: 15-20 reps, carga leve, RIR 4+</label>`);
   for (let i = 1; i <= rec; i++) checks.push(`<label><input type="checkbox"/> Reconhecimento ${i}: <10 reps, sem falhar, RIR 2-3</label>`);
-  for (let i = 1; i <= work; i++) checks.push(`<label><input type="checkbox"/> Trabalho ${i}: ${cur.reps} reps, próximo da falha, ${cur.day ? 'RIR ' + (cur.intensity || '1-2') : 'RIR 1-2'}</label>`);
+  for (let i = 1; i <= work; i++) checks.push(`<label class="check-row"><input type="checkbox"/> Trabalho ${i}: ${cur.reps} reps, próximo da falha</label>`);
 
   out.innerHTML = `<strong>${cur.day} • ${cur.name}</strong><p>Descanso recomendado: ${cur.rest} • Tempo sugerido: ${cur.estimated_seconds || 90}s</p><div class="checklist">${checks.join('<br/>')}</div>`;
 }
@@ -416,20 +522,38 @@ function bindEnterBehavior(el, sendFn) {
   });
 }
 
+async function loadCheckinHistory() {
+  const box = $('checkin-history');
+  if (!box) return;
+  const res = await fetch('/api/progress', { headers: authHeaders() });
+  if (!res.ok) return;
+  const data = await res.json();
+  const recent = (data.checkins || []).slice(0, 5);
+  box.innerHTML = `<strong>Últimos check-ins</strong>${recent.length ? recent.map(c => `<p>${c.week_label} • ${c.completed_percent}% • ${c.notes || 'sem observações'}</p>`).join('') : '<p>Nenhum check-in salvo ainda.</p>'}`;
+}
+
 async function initApp() {
   await routeApp();
   $('btn-logout').onclick = () => { localStorage.removeItem('fitai_token'); window.location.href = '/'; };
   $('btn-user').onclick = async () => {
     const me = await fetch('/api/me', { headers: authHeaders() }).then(r => r.json()).catch(() => ({}));
     const profile = await fetch('/api/profile', { headers: authHeaders() }).then(r => r.ok ? r.json() : { profile: null }).catch(() => ({ profile: null }));
-    const diet = await fetch('/api/profile/diet', { headers: authHeaders() }).then(r => r.ok ? r.json() : { profile: null }).catch(() => ({ profile: null }));
-    $('user-modal-content').innerHTML = `<p><strong>Nome:</strong> ${me.user?.name || '-'}</p><p><strong>Email:</strong> ${me.user?.email || '-'}</p><p><strong>Objetivo atual:</strong> ${profile.profile?.objective || '-'}</p><p><strong>Dias/semana:</strong> ${profile.profile?.days_per_week || '-'}</p><p><strong>Peso:</strong> ${diet.profile?.weight || '-'} kg</p>`;
+    const activeDay = state.currentWorkout?.plan?.[0];
+    const objective = activeDay?.focus || profile.profile?.objective;
+    const days = state.currentWorkout?.plan?.length || profile.profile?.days_per_week;
+    const weight = profile.profile?.weight;
+    $('user-modal-content').innerHTML = `<form id="user-basic-form" class="grid"><label>Nome<input id="edit-name" value="${me.user?.name || ''}" required /></label><label>Email<input id="edit-email" type="email" value="${me.user?.email || ''}" required /></label><label>Peso (kg)<input id="edit-weight" type="number" min="1" step="1" value="${weight || ''}" /></label><p><strong>Objetivo atual:</strong> ${objective || '-'}</p><p><strong>Dias/semana:</strong> ${days || '-'}</p><button class="btn neon" type="submit">Salvar dados</button></form><p id="user-edit-msg" class="msg"></p>`;
     $('user-modal').classList.remove('hidden');
+    $('user-basic-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/user/basic', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ name: $('edit-name').value, email: $('edit-email').value, weight: Number($('edit-weight').value) || null }) });
+      $('user-edit-msg').textContent = res.ok ? 'Dados atualizados.' : 'Falha ao salvar dados.';
+    };
   };
   $('btn-close-user-modal').onclick = () => $('user-modal').classList.add('hidden');
   $('buy-12m').onclick = async () => doMockCheckout('plan_12m');
   $('buy-6m').onclick = async () => doMockCheckout('plan_6m');
-  $('buy-super').onclick = async () => doMockCheckout('plan_super');
+  $('buy-pro').onclick = async () => doMockCheckout('plan_pro');
   $('btn-refresh-list').onclick = loadWorkoutList;
   $('btn-close-dashboard').onclick = () => $('dashboard-section').classList.add('hidden');
   $('btn-refresh').onclick = fetchCurrentWorkout;
@@ -443,7 +567,10 @@ async function initApp() {
     const res = await fetch('/api/workouts/create', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: $('new-workout-name').value.trim() }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setMsg('checkin-msg', data.error || featureGate('criar mais treinos'), true);
-    $('new-workout-name').value = ''; await loadWorkoutList();
+    $('new-workout-name').value = '';
+    $('onboarding-form')?.reset();
+    $('onboarding-section')?.classList.remove('hidden');
+    await loadWorkoutList();
   };
 
   $('onboarding-form')?.addEventListener('submit', async (e) => {
@@ -470,34 +597,49 @@ async function initApp() {
 
   $('checkin-form').addEventListener('submit', async (e) => {
     e.preventDefault(); if (!state.subscriptionActive || !state.currentWorkout?.id) return setMsg('checkin-msg', featureGate('check-in e ajuste automático'), true);
-    const payload = { workout_id: state.currentWorkout.id, week_label: $('week_label').value, completed_percent: Number($('completed_percent').value), difficulty: Number($('difficulty').value), energy: Number($('energy').value), pain: Number($('pain').value), notes: $('notes').value };
+    const weekLabel = getCurrentWeekLabel();
+    const timesTrained = Number($('times_trained').value);
+    const expected = Math.max(1, state.profileDaysPerWeek || state.currentWorkout.plan.length || 3);
+    const completedPercent = Math.min(100, Math.round((timesTrained / expected) * 100));
+    const payload = { workout_id: state.currentWorkout.id, week_label: weekLabel, times_trained: timesTrained, completed_percent: completedPercent, difficulty: Number($('difficulty').value), energy: Number($('energy').value), pain: Number($('pain').value), notes: $('notes').value };
     const res = await fetch('/api/workouts/checkin', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
-    if (!res.ok) return setMsg('checkin-msg', 'Erro no check-in', true);
-    setMsg('checkin-msg', 'Check-in aplicado e treino recalibrado!');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMsg('checkin-msg', data.error || 'Erro no check-in', true);
+    setMsg('checkin-msg', `Check-in salvo (${weekLabel}) e treino recalibrado!`);
+    if (data.feedback) addAiLog('IA', data.feedback);
     await openWorkout(state.currentWorkout.id); await loadWorkoutList();
+    await loadCheckinHistory();
   });
 
   $('ai-workout-target').onchange = () => { state.aiTargetWorkoutId = $('ai-workout-target').value ? Number($('ai-workout-target').value) : null; };
   $('btn-ai-send').onclick = sendTrainingAi;
 
   $('nut-has-routine').onchange = () => $('nut-routine').classList.toggle('hidden', $('nut-has-routine').value !== 'sim');
+  $('nut-use-whey').onchange = () => $('nut-whey-meal').classList.toggle('hidden', $('nut-use-whey').value !== 'sim');
 
   $('nutrition-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!state.subscriptionActive || state.subscription?.package_code !== 'plan_super') {
-      return setMsg('nutrition-msg', 'Plano de dieta é exclusivo do FitAI Super.', true);
+    if (!state.subscriptionActive || state.subscription?.package_code !== 'plan_pro') {
+      return setMsg('nutrition-msg', 'Plano de dieta é exclusivo do FitAI Pro.', true);
     }
+    const weight = parseInt(String($('nut-weight').value || '').replace(',', '.'), 10);
+    const height = parseInt(String($('nut-height').value || '').replace(',', '.'), 10);
+    const age = parseInt(String($('nut-age').value || '').replace(',', '.'), 10);
+    if (weight <= 0 || height < 100 || age <= 0) return setMsg('nutrition-msg', 'Preencha peso/altura/idade com valores válidos.', true);
     const payload = {
+      name: $('nut-name').value.trim() || 'Plano alimentar',
       objective: $('nut-objective').value,
-      weight: Number($('nut-weight').value),
-      height: Number($('nut-height').value),
-      age: Number($('nut-age').value),
+      weight,
+      height,
+      age,
       sex: $('nut-sex').value,
       activity_level: $('nut-activity').value,
       routine_notes: $('nut-has-routine').value === 'sim' ? $('nut-routine').value : '',
       allergies: $('nut-allergies').value,
       disliked_foods: $('nut-dislikes').value,
-      meals_count: Number($('nut-meals-count').value)
+      meals_count: Number($('nut-meals-count').value),
+      use_whey: $('nut-use-whey').value === 'sim',
+      whey_meal: $('nut-whey-meal').value
     };
 
     await fetch('/api/profile/diet', {
@@ -520,6 +662,7 @@ async function initApp() {
     if (!res.ok) return setMsg('nutrition-msg', data.error || 'Erro ao gerar dieta', true);
     setMsg('nutrition-msg', 'Plano alimentar gerado com sucesso!');
     renderNutrition(data);
+    await loadNutritionPlans();
   });
 
   $('btn-pdf').onclick = async () => {
@@ -534,6 +677,8 @@ async function initApp() {
   bindEnterBehavior($('nutrition-chat-input'), sendNutritionAi);
 
   $('btn-exit-live').onclick = () => { $('live-training').classList.add('hidden'); $('live-output').innerHTML = 'Modo treino pausado. Seu treino permanece salvo.'; };
+  $('btn-next-ex').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = Math.min(state.liveSequence.length - 1, state.liveIndex + 1); renderLive(); };
+  $('btn-prev-ex').onclick = () => { if (!state.liveSequence.length) return; state.liveIndex = Math.max(0, state.liveIndex - 1); renderLive(); };
 
   $('btn-toggle-timer').onclick = () => $('rest-timer').classList.toggle('hidden');
   $('btn-start-timer').onclick = () => {
@@ -552,6 +697,9 @@ async function initApp() {
   $('btn-reset-timer').onclick = () => { $('rest-time').textContent = '01:00'; state.timer.sec = 60; if (state.timer.id) { clearInterval(state.timer.id); state.timer.id = null; } };
 
   $('btn-close-modal').onclick = () => { $('exercise-modal').classList.add('hidden'); $('exercise-frame').src = ''; };
+  $('btn-close-schedule-modal').onclick = () => $('schedule-modal').classList.add('hidden');
+  $('exercise-modal').onclick = (e) => { if (e.target.id === 'exercise-modal') { $('exercise-modal').classList.add('hidden'); $('exercise-frame').src = ''; } };
+  $('schedule-modal').onclick = (e) => { if (e.target.id === 'schedule-modal') $('schedule-modal').classList.add('hidden'); };
 }
 
 bindShared();

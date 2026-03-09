@@ -32,7 +32,10 @@ html, body {
     radial-gradient(circle at 10% 0%, rgba(112, 193, 255, 0.22), transparent 35%),
     radial-gradient(circle at 90% 20%, rgba(148, 136, 255, 0.18), transparent 32%),
     linear-gradient(180deg, var(--bg-1), var(--bg-2));
+  background-size: 130% 130%;
+  animation: bgFlow 18s ease-in-out infinite;
 }
+@keyframes bgFlow { 0%,100% { background-position: 0% 0%; } 50% { background-position: 100% 100%; } }
 
 .bg-glow {
   position: fixed;
@@ -84,7 +87,9 @@ html, body {
   grid-template-columns: 1.1fr .9fr;
   gap: 16px;
   align-items: center;
+  animation: floatCard 6s ease-in-out infinite;
 }
+@keyframes floatCard { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 
 .hero-img {
   width: 100%;
@@ -114,6 +119,8 @@ p { color: var(--muted); }
   gap: 12px;
 }
 .feature h3 { margin-bottom: 6px; }
+.feature, .plan, .testimonials .card { transition: transform .25s ease, box-shadow .25s ease; }
+.feature:hover, .plan:hover, .testimonials .card:hover { transform: translateY(-5px) scale(1.01); box-shadow: 0 16px 34px rgba(19, 42, 80, .2); }
 
 .pricing h2, .social-proof h2 { margin: 6px 0 10px; }
 .pricing-grid {
@@ -164,6 +171,7 @@ input, select, textarea {
   font-size: .97rem;
   outline: none;
 }
+textarea { resize: none; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px); background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
 html[data-theme="dark"] input,
 html[data-theme="dark"] select,
@@ -254,17 +262,50 @@ html[data-theme="dark"] .chat-log { background: rgba(8,17,37,.55); }
 .meal-list { margin: 0; padding-left: 18px; display:grid; gap:6px; }
 .muted { color: var(--muted); }
 .calendar-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; }
-.cal-day { min-height: 82px; text-align:left; }
+.cal-day { min-height: 92px; text-align:left; color: var(--text) !important; }
+.cal-day * { color: var(--text) !important; }
 .cal-day.train { border-color: var(--primary); }
+.cal-day.clickable { cursor: pointer; }
+.cal-day.rest { opacity: .85; }
+.cal-day.today { border: 2px solid #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .2) inset; }
+.cal-check { display:inline-block; margin-top:6px; padding:3px 8px; border-radius:999px; background: rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.38); font-size:.7rem; font-weight:700; }
+.cal-check.done { background: rgba(34,197,94,.2); border-color: rgba(34,197,94,.55); }
 .term-help { border-bottom: 1px dashed var(--primary); cursor: help; transition: opacity .2s; }
 .term-help:hover { opacity: .85; }
 .term-tooltip { position: absolute; z-index: 100; max-width: 280px; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; box-shadow: 0 10px 25px rgba(0,0,0,.25); font-size: .85rem; }
-.checklist label { display:block; margin: 6px 0; }
+.checklist label { display:block; margin: 6px 0; color: var(--text); }
+.check-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:linear-gradient(90deg, rgba(56,189,248,.12), rgba(99,102,241,.10)); }
+.check-row input[type="checkbox"] { appearance:none; width:20px; height:20px; border-radius:6px; border:2px solid var(--primary); position:relative; cursor:pointer; background:rgba(255,255,255,.35); }
+.check-row input[type="checkbox"]:checked { background: linear-gradient(90deg, var(--primary), var(--primary-2)); border-color: transparent; }
+.check-row input[type="checkbox"]:checked::after { content:'✓'; color:#fff; font-weight:800; position:absolute; left:4px; top:-1px; }
+.cal-day small { color: var(--text); }
+.carousel { overflow: hidden; grid-template-columns: repeat(3, 1fr); }
+.carousel img { animation: floatIn 9s ease-in-out infinite; }
+.carousel img:nth-child(2){ animation-delay: 1.2s; }
+.carousel img:nth-child(3){ animation-delay: 2.4s; }
+.media-showcase { overflow: hidden; }
+.media-carousel { display:grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap:10px; animation: bgFlow 20s ease-in-out infinite; }
+.media-item { overflow:hidden; border-radius:12px; }
+.media-item img { width:100%; height:170px; object-fit:cover; border-radius:12px; border:1px solid var(--border); transition: transform .5s ease, filter .35s ease, box-shadow .35s ease; animation: floatIn 8s ease-in-out infinite; }
+.media-item:nth-child(2) img { animation-delay: 1s; }
+.media-item:nth-child(3) img { animation-delay: 2s; }
+.media-item:nth-child(4) img { animation-delay: 3s; }
+.media-item img:hover { transform: scale(1.05); filter: brightness(1.08); box-shadow: 0 14px 28px rgba(19,42,80,.26); }
+.series-item { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; margin-bottom:8px; }
+.series-check { width:28px; height:28px; border-radius:8px; border:2px solid var(--primary); background:transparent; color:transparent; font-weight:900; cursor:pointer; position:relative; }
+.series-check::after { content:''; position:absolute; inset:6px; border-radius:4px; background:rgba(56,189,248,.18); }
+.series-check.done { background:linear-gradient(90deg,var(--primary),var(--primary-2)); border-color:transparent; color:#fff; }
+.series-check.done::before { content:'✓'; position:absolute; inset:0; display:grid; place-items:center; z-index:2; }
+.series-check.done::after { display:none; }
+.series-check:active { transform: scale(.95); }
+@keyframes floatIn { 0%,100% { transform: translateY(0) scale(1);} 50% { transform: translateY(-8px) scale(1.02);} }
+.plan.selected-plan { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.35) inset; }
 
 @media (max-width: 960px) {
   .hero { grid-template-columns: 1fr; }
   .hero-img { height: 250px; }
   .features-grid, .pricing-grid, .testimonials, .image-strip { grid-template-columns: 1fr; }
+  .media-carousel { grid-template-columns: 1fr 1fr; }
   .grid.two { grid-template-columns: 1fr; }
 }
 

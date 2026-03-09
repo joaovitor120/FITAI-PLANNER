@@ -21,23 +21,34 @@
     </div>
 
     <section id="panel-training">
+      <section class="card glass media-showcase">
+        <h2>Inspiração do dia</h2>
+        <p>Treino e dieta na prática para você visualizar a execução e manter consistência.</p>
+        <div class="media-carousel">
+          <article class="media-item"><img src="https://images.unsplash.com/photo-1549060279-7e168fcee0c2?auto=format&fit=crop&w=1200&q=80" alt="Treino de força"/></article>
+          <article class="media-item"><img src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=1200&q=80" alt="Execução de flexão"/></article>
+          <article class="media-item"><img src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=1200&q=80" alt="Refeição saudável"/></article>
+          <article class="media-item"><img src="https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=1200&q=80" alt="Treino cardio"/></article>
+        </div>
+      </section>
+
       <section class="card glass">
         <h2>Assinatura + Pacotes + Modo demonstração</h2>
         <p id="subscription-status">Carregando status...</p>
         <div id="demo-banner" class="day hidden"><strong>Modo demonstração ativo</strong><p>Você pode criar treino e testar o app. Edição avançada, IA de ajustes e plano alimentar exigem assinatura ativa.</p></div>
-        <div class="actions"><button id="buy-12m" class="btn neon">12 meses — R$99/mês</button><button id="buy-6m" class="btn">6 meses — R$119/mês</button><button id="buy-super" class="btn cta">FitAI Super — R$149/mês</button></div>
+        <div class="actions"><button id="buy-12m" class="btn">Plano FitAI — R$39,90/mês</button><button id="buy-6m" class="btn">Plano FitAI Plus — R$49,90/mês</button><button id="buy-pro" class="btn cta">Plano FitAI Pro — R$59,90/mês</button></div>
         <p id="billing-msg" class="msg"></p>
       </section>
 
       <section id="onboarding-section" class="card glass hidden">
-        <h2>Questionário Inicial</h2>
+        <h2>Questionário de Treino</h2>
         <p id="onboarding-tip" class="muted"></p>
         <form id="onboarding-form" class="grid two">
           <select id="objective" required><option value="">Objetivo</option><option value="hipertrofia">Hipertrofia</option><option value="emagrecimento">Emagrecimento</option><option value="condicionamento">Condicionamento</option></select>
           <select id="experience_level" required><option value="">Nível</option><option value="iniciante">Iniciante</option><option value="intermediario">Intermediário</option><option value="avancado">Avançado</option></select>
           <input id="days_per_week" type="number" min="2" max="6" placeholder="Dias por semana" required />
           <input id="time_per_session" type="number" min="20" max="120" placeholder="Minutos por treino" required />
-          <input id="equipment" placeholder="Equipamentos (casa, academia, halteres...)" required />
+          <select id="equipment" required><option value="">Equipamentos disponíveis</option><option value="casa">Casa (peso corporal)</option><option value="casa, halteres">Casa + halteres</option><option value="academia">Academia completa</option><option value="academia, barra">Academia + barra</option><option value="elástico">Elásticos</option><option value="kettlebell">Kettlebell</option><option value="barra fixa">Barra fixa</option><option value="misto">Misto</option></select>
           <select id="split_preference"><option value="auto">Divisão automática</option><option value="full_body">Full Body</option><option value="upper_lower">Upper/Lower</option><option value="ppl">Push Pull Legs</option></select>
           <input id="limitations" placeholder="Limitações físicas (ombro, joelho, lombar...)" />
           <button class="btn neon" type="submit">Gerar treino</button>
@@ -61,16 +72,7 @@
         <div class="actions"><button id="btn-edit-text" class="btn">Editar texto</button><button id="btn-save-text" class="btn neon hidden">Salvar texto</button><button id="btn-cancel-text" class="btn hidden">Cancelar</button></div>
         <div id="plan-text-view" class="day"></div>
 
-        <h3>Check-in + Assistente IA</h3>
-        <form id="checkin-form" class="grid two">
-          <input id="week_label" placeholder="Semana (ex: 2026-W08)" />
-          <input id="completed_percent" type="number" min="0" max="100" placeholder="% de conclusão" required />
-          <input id="difficulty" type="number" min="1" max="10" placeholder="Dificuldade (1-10)" required />
-          <input id="energy" type="number" min="1" max="10" placeholder="Energia (1-10)" required />
-          <input id="pain" type="number" min="1" max="10" placeholder="Dor (1-10)" required />
-          <input id="notes" placeholder="Observações" />
-          <button class="btn neon" type="submit">Salvar check-in semanal</button>
-        </form>
+        <h3>Assistente IA do treino</h3>
 
         <div class="day" style="margin-top:12px;">
           <strong>Assistente IA do treino</strong>
@@ -90,13 +92,25 @@
         <h2>Agenda de Treinos</h2>
         <p>Distribuição do treino ativo no mês atual.</p>
         <div id="schedule-month" class="day"></div>
+        <div id="streak-box" class="day">🔥 Sequência: 0 dias</div>
         <div id="schedule-grid" class="calendar-grid"></div>
         <div id="schedule-detail" class="day hidden"></div>
+        <form id="checkin-form" class="grid two">
+          <input id="times_trained" type="number" min="0" max="14" placeholder="Quantas vezes treinou na semana" required />
+          <input id="difficulty" type="number" min="1" max="10" placeholder="Dificuldade (1-10)" required />
+          <input id="energy" type="number" min="1" max="10" placeholder="Energia (1-10)" required />
+          <input id="pain" type="number" min="1" max="10" placeholder="Dor (1-10)" required />
+          <input id="notes" placeholder="Observações" />
+          <button class="btn neon" type="submit">Salvar check-in semanal</button>
+        </form>
+        <div id="checkin-history" class="day"></div>
+        <div id="day-done-toast" class="msg"></div>
+        <div id="schedule-alert" class="msg"></div>
         <section id="live-training" class="card glass hidden">
           <h3>Modo Treino do Dia</h3>
           <div class="actions"><button id="btn-toggle-timer" class="btn">Cronômetro</button><button id="btn-exit-live" class="btn ghost">Sair do modo treino</button></div>
           <div id="rest-timer" class="day hidden"><strong>Descanso:</strong> <span id="rest-time">00:00</span> <button id="btn-start-timer" class="btn btn-mini">Iniciar/Pausar</button><button id="btn-reset-timer" class="btn btn-mini">Reset</button></div>
-          <div id="live-output" class="day"></div>
+          <div id="live-output" class="day"></div><div class="actions"><button id="btn-prev-ex" class="btn">Exercício anterior</button><button id="btn-next-ex" class="btn neon">Próximo exercício</button></div>
         </section>
       </section>
     </section>
@@ -106,20 +120,24 @@
         <h2>Plano alimentar (FitAI Super)</h2>
         <p>Baseado em fórmula de gasto energético + objetivo + rotina alimentar atual.</p>
         <form id="nutrition-form" class="grid two">
-          <input id="nut-weight" type="number" step="0.1" placeholder="Peso (kg)" required />
-          <input id="nut-height" type="number" step="0.1" placeholder="Altura (cm)" required />
-          <input id="nut-age" type="number" placeholder="Idade" required />
+          <input id="nut-name" placeholder="Nome da dieta (ex: Cutting março)" required />
+          <input id="nut-weight" type="number" min="1" step="1" placeholder="Peso (kg)" required />
+          <input id="nut-height" type="number" min="100" step="1" placeholder="Altura (cm)" required />
+          <input id="nut-age" type="number" min="1" step="1" placeholder="Idade" required />
           <select id="nut-sex" required><option value="">Sexo biológico</option><option value="masculino">Masculino</option><option value="feminino">Feminino</option></select>
           <select id="nut-objective" required><option value="">Objetivo</option><option value="ganhar">Ganhar peso/massa</option><option value="perder">Perder gordura</option><option value="manter">Manter peso</option></select>
           <select id="nut-activity" required><option value="">Nível de atividade</option><option value="sedentario">Sedentário</option><option value="leve">Leve</option><option value="moderado">Moderado</option><option value="alto">Alto</option><option value="muito_alto">Muito alto</option></select>
           <input id="nut-allergies" placeholder="Alergias/intolerâncias" />
           <input id="nut-dislikes" placeholder="Alimentos que não gosta" />
           <select id="nut-meals-count"><option value="4">Quantidade de refeições: 4</option><option value="3">Quantidade de refeições: 3</option><option value="5">Quantidade de refeições: 5</option><option value="6">Quantidade de refeições: 6</option></select>
+          <select id="nut-use-whey"><option value="nao">Você consome whey protein? Não</option><option value="sim">Você consome whey protein? Sim</option></select>
+          <select id="nut-whey-meal" class="hidden"><option value="Lanche">Refeição do whey: Lanche</option><option value="Café da manhã">Refeição do whey: Café da manhã</option><option value="Pós-treino">Refeição do whey: Pós-treino</option><option value="Ceia">Refeição do whey: Ceia</option></select>
           <select id="nut-has-routine"><option value="nao">Você já tem alguma rotina alimentar? Não</option><option value="sim">Você já tem alguma rotina alimentar? Sim</option></select>
           <textarea id="nut-routine" class="hidden" placeholder="Descreva sua rotina alimentar atual" rows="4"></textarea>
           <button class="btn neon" type="submit">Gerar dieta</button>
         </form>
         <p id="nutrition-msg" class="msg"></p>
+        <div class="day"><strong>Meus planos alimentares</strong><div id="nutrition-plan-list"></div></div>
         <div id="nutrition-output"></div>
 
         <div class="day" style="margin-top:12px;">
@@ -132,6 +150,7 @@
   </main>
 
   <div id="exercise-modal" class="modal hidden"><div class="modal-box glass card"><div class="actions" style="justify-content:space-between;"><strong id="exercise-modal-title">Exercício</strong><button id="btn-close-modal" class="btn">Fechar</button></div><iframe id="exercise-frame" title="Vídeo do exercício" loading="lazy"></iframe><p><a id="exercise-open-new" target="_blank" rel="noopener">Abrir no YouTube em nova guia</a></p></div></div>
+  <div id="schedule-modal" class="modal hidden"><div class="modal-box glass card"><div class="actions" style="justify-content:space-between;"><strong id="schedule-modal-title">Treino do dia</strong><button id="btn-close-schedule-modal" class="btn">Fechar</button></div><div id="schedule-modal-body" class="day"></div></div></div>
   <div id="user-modal" class="modal hidden"><div class="modal-box glass card"><div class="actions" style="justify-content:space-between;"><strong>Dados do usuário</strong><button id="btn-close-user-modal" class="btn">Fechar</button></div><div id="user-modal-content" class="day"></div></div></div>
   <script src="/app.js"></script>
 </body>

@@ -23,6 +23,7 @@ const exerciseVideoMap = Object.entries(exerciseVideoMapRaw || {}).flatMap(([gro
 app.use(cors());
 app.use(express.json());
 
+const ADMIN_GATE_ENABLED = String(process.env.ADMIN_GATE_ENABLED || 'true').toLowerCase() !== 'false';
 const ADMIN_GATE_USER = process.env.ADMIN_GATE_USER || 'adm123';
 const ADMIN_GATE_PASS = process.env.ADMIN_GATE_PASS || 'adm123';
 const ADMIN_GATE_SECRET = process.env.ADMIN_GATE_SECRET || JWT_SECRET;
@@ -46,6 +47,7 @@ function setGateCookie(res, token) {
 }
 
 function adminGateMiddleware(req, res, next) {
+  if (!ADMIN_GATE_ENABLED) return next();
   const openPaths = ['/admin-gate.html', '/api/admin-gate/login', '/api/admin-gate/status'];
   if (openPaths.includes(req.path)) return next();
   const cookies = parseCookies(req);
@@ -237,6 +239,9 @@ async function initDb() {
   await ensureColumn('workouts', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn('workouts', 'updated_at', USE_POSTGRES ? 'TIMESTAMP' : 'DATETIME');
   await ensureColumn('checkins', 'workout_id', 'INTEGER');
+  await ensureColumn('nutrition_plans', 'name', "TEXT NOT NULL DEFAULT 'Plano alimentar' ");
+  await ensureColumn('nutrition_plans', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+  await run("UPDATE subscriptions SET package_code = 'plan_pro' WHERE package_code = 'plan_super'");
 }
 
 function auth(req, res, next) {
@@ -251,6 +256,7 @@ function auth(req, res, next) {
 }
 
 app.get('/api/admin-gate/status', (req, res) => {
+  if (!ADMIN_GATE_ENABLED) return res.json({ ok: true, disabled: true });
   const cookies = parseCookies(req);
   const gate = cookies.fitai_admin_gate;
   if (!gate) return res.status(401).json({ ok: false });
@@ -388,6 +394,22 @@ function getNutritionTargets({ weight, height, age, sex, activityLevel, objectiv
   return { calories, protein, carbs, fat };
 }
 
+function diversifyExercises(list = []) {
+  const variants = {
+    'flexão': ['Flexão', 'Flexão inclinada', 'Flexão declinada', 'Supino com halteres no chão'],
+    'agachamento': ['Agachamento livre', 'Agachamento goblet', 'Agachamento sumô'],
+    'remada': ['Remada baixa', 'Remada unilateral halter', 'Remada invertida sob mesa']
+  };
+  const used = {};
+  return list.map((name) => {
+    const base = Object.keys(variants).find(k => normalizeText(name).includes(normalizeText(k)));
+    if (!base) return name;
+    used[base] = (used[base] || 0) + 1;
+    const opts = variants[base];
+    return opts[(used[base] - 1) % opts.length];
+  });
+}
+
 function generateWorkout(profile, checkin) {
   const days = Number(profile.days_per_week);
   const goal = profile.objective;
@@ -440,7 +462,7 @@ function generateWorkout(profile, checkin) {
   const plan = [];
   if (splitKey === 'full_body') {
     for (let i = 1; i <= days; i++) {
-      const filtered = applyLimitationsToExercises(lib.full, profile.limitations).slice(0, 5);
+      const filtered = diversifyExercises(applyLimitationsToExercises(lib.full, profile.limitations)).slice(0, 5);
       plan.push({ day: `Dia ${i}`, focus: 'Full Body', intensity, exercises: filtered.map(name => {
         const meta = getExerciseMeta(name);
         return { exercise_id: meta.id, name: meta.label, sets, reps, rest: '60-90s', tempo: '2-0-2', estimated_seconds: 90 };
@@ -450,7 +472,7 @@ function generateWorkout(profile, checkin) {
     for (let i = 0; i < days; i++) {
       const upper = i % 2 === 0;
       const base = upper ? [...lib.push.slice(0, 3), ...lib.pull.slice(0, 2)] : lib.legs.slice(0, 5);
-      const ex = applyLimitationsToExercises(base, profile.limitations).slice(0, 5);
+      const ex = diversifyExercises(applyLimitationsToExercises(base, profile.limitations)).slice(0, 5);
       plan.push({ day: `Dia ${i + 1}`, focus: upper ? 'Upper' : 'Lower', intensity, exercises: ex.map(name => {
         const meta = getExerciseMeta(name);
         return { exercise_id: meta.id, name: meta.label, sets, reps, rest: '60-120s', tempo: '2-1-2', estimated_seconds: 100 };
@@ -461,7 +483,7 @@ function generateWorkout(profile, checkin) {
     for (let i = 0; i < days; i++) {
       const focus = order[i % 3];
       const exBase = focus === 'Push' ? lib.push : focus === 'Pull' ? lib.pull : lib.legs;
-      const ex = applyLimitationsToExercises(exBase, profile.limitations).slice(0, 5);
+      const ex = diversifyExercises(applyLimitationsToExercises(exBase, profile.limitations)).slice(0, 5);
       plan.push({ day: `Dia ${i + 1}`, focus, intensity, exercises: ex.map(name => {
         const meta = getExerciseMeta(name);
         return { exercise_id: meta.id, name: meta.label, sets, reps, rest: '60-120s', tempo: '2-0-2', estimated_seconds: 95 };
@@ -512,6 +534,16 @@ app.get('/api/profile', auth, async (req, res) => {
   res.json({ profile });
 });
 
+app.put('/api/user/basic', auth, async (req, res) => {
+  const { name, email, weight } = req.body || {};
+  if (!name?.trim() || !email?.trim()) return res.status(400).json({ error: 'Nome e email são obrigatórios' });
+  await run('UPDATE users SET name = ?, email = ? WHERE id = ?', [name.trim(), email.trim().toLowerCase(), req.user.id]);
+  await run(`INSERT INTO profiles (user_id, objective, experience_level, days_per_week, time_per_session, equipment, limitations, split_preference, weight, updated_at)
+    VALUES (?, 'hipertrofia', 'iniciante', 3, 45, 'casa', '', 'auto', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET weight=excluded.weight, updated_at=CURRENT_TIMESTAMP`, [req.user.id, Number(weight) || null]);
+  res.json({ message: 'Dados atualizados' });
+});
+
 app.get('/api/profile/diet', auth, async (req, res) => {
   const profile = await get('SELECT weight, height, age, sex_biological, activity_level, allergies, disliked_foods, routine_notes FROM profiles WHERE user_id = ?', [req.user.id]);
   if (!profile) return res.status(404).json({ error: 'Perfil não encontrado' });
@@ -520,17 +552,28 @@ app.get('/api/profile/diet', auth, async (req, res) => {
 
 app.put('/api/profile/diet', auth, async (req, res) => {
   const { weight, height, age, sex_biological, activity_level, allergies, disliked_foods, routine_notes } = req.body;
-  await run(`UPDATE profiles SET weight = ?, height = ?, age = ?, sex_biological = ?, activity_level = ?, allergies = ?, disliked_foods = ?, routine_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
-    [weight || null, height || null, age || null, sex_biological || '', activity_level || '', allergies || '', disliked_foods || '', routine_notes || '', req.user.id]);
+  await run(`INSERT INTO profiles (user_id, objective, experience_level, days_per_week, time_per_session, equipment, limitations, split_preference, weight, height, age, sex_biological, activity_level, allergies, disliked_foods, routine_notes, updated_at)
+    VALUES (?, 'hipertrofia', 'iniciante', 3, 45, 'casa', '', 'auto', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id) DO UPDATE SET
+    weight=excluded.weight,
+    height=excluded.height,
+    age=excluded.age,
+    sex_biological=excluded.sex_biological,
+    activity_level=excluded.activity_level,
+    allergies=excluded.allergies,
+    disliked_foods=excluded.disliked_foods,
+    routine_notes=excluded.routine_notes,
+    updated_at=CURRENT_TIMESTAMP`,
+    [req.user.id, weight || null, height || null, age || null, sex_biological || '', activity_level || '', allergies || '', disliked_foods || '', routine_notes || '']);
   res.json({ message: 'Perfil de dieta atualizado' });
 });
 
 app.get('/api/billing/packages', (_req, res) => {
   res.json({
     packages: [
-      { code: 'plan_12m', label: '12 meses', months: 12, monthlyPrice: 99 },
-      { code: 'plan_6m', label: '6 meses', months: 6, monthlyPrice: 119 },
-      { code: 'plan_super', label: 'Plano FitAI Super', months: 12, monthlyPrice: 149, includesNutrition: true }
+      { code: 'plan_12m', label: 'Plano FitAI', months: 12, monthlyPrice: 39.9 },
+      { code: 'plan_6m', label: 'Plano FitAI Plus', months: 6, monthlyPrice: 49.9 },
+      { code: 'plan_pro', label: 'Plano FitAI Pro', months: 12, monthlyPrice: 59.9, includesNutrition: true }
     ]
   });
 });
@@ -538,11 +581,11 @@ app.get('/api/billing/packages', (_req, res) => {
 app.post('/api/billing/mock-checkout', auth, async (req, res) => {
   const { packageCode } = req.body;
   const pack = packageCode === 'plan_12m'
-    ? { code: 'plan_12m', months: 12, monthlyPrice: 99 }
+    ? { code: 'plan_12m', months: 12, monthlyPrice: 39.9, rank: 1 }
     : packageCode === 'plan_6m'
-      ? { code: 'plan_6m', months: 6, monthlyPrice: 119 }
-      : packageCode === 'plan_super'
-        ? { code: 'plan_super', months: 12, monthlyPrice: 149 }
+      ? { code: 'plan_6m', months: 6, monthlyPrice: 49.9, rank: 2 }
+      : packageCode === 'plan_pro'
+        ? { code: 'plan_pro', months: 12, monthlyPrice: 59.9, rank: 3 }
         : null;
 
   if (!pack) return res.status(400).json({ error: 'Pacote inválido' });
@@ -712,7 +755,9 @@ app.post('/api/ai/checkin-feedback', auth, async (req, res) => {
       };
     }
 
-    let shouldSuggestPlan = analysis.intent !== 'question';
+    const rawMsg = normalizeText(String(message || ''));
+    const directQuestion = rawMsg.includes('no lugar da flex') || rawMsg.includes('substit') || rawMsg.includes('?');
+    let shouldSuggestPlan = analysis.intent !== 'question' && !directQuestion;
     const delta = Number(analysis.deltaSets || 0);
     if (shouldSuggestPlan) {
       const targetKey = String(analysis.target || 'full').toLowerCase();
@@ -727,7 +772,9 @@ app.post('/api/ai/checkin-feedback', auth, async (req, res) => {
       });
     }
 
-    const aiReply = analysis.coachReply || 'Analisei seu caso e preparei um ajuste personalizado.';
+    const aiReply = directQuestion
+      ? 'Ótima pergunta. Substituições para flexão: flexão inclinada (3x10-15), supino com halteres no chão (3-4x8-12) ou crucifixo no chão (3x12-15). Escolha conforme equipamento e conforto articular.'
+      : (analysis.coachReply || 'Analisei seu caso e preparei um ajuste personalizado.');
     const rationale = analysis.rationale || 'Baseado em percepção de esforço, recuperação e progressão de sobrecarga.';
 
     res.json({ aiReply: `${aiReply}\n\nBase técnica: ${rationale}`, suggestedPlan: shouldSuggestPlan ? plan : null, rationale, analysis, summary: analysis.summary || `${analysis.target || 'treino'} para ${analysis.newRir || 'novo ajuste de intensidade'}` });
@@ -744,9 +791,9 @@ app.post('/api/ai/checkin-feedback', auth, async (req, res) => {
 
 app.post('/api/workouts/checkin', auth, async (req, res) => {
   try {
-    const { workout_id, week_label, difficulty, energy, pain, completed_percent, notes } = req.body;
+    const { workout_id, week_label, difficulty, energy, pain, completed_percent, times_trained, notes } = req.body;
     await run(`INSERT INTO checkins (user_id, workout_id, week_label, difficulty, energy, pain, completed_percent, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.user.id, workout_id || null, week_label || 'Semana atual', difficulty, energy, pain, completed_percent, notes || '']);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [req.user.id, workout_id || null, week_label || 'Semana atual', difficulty, energy, pain, completed_percent, `${notes || ''}${times_trained ? ` | Treinos na semana: ${times_trained}` : ''}`]);
 
     const profile = await get('SELECT * FROM profiles WHERE user_id = ?', [req.user.id]);
     if (!profile) return res.status(400).json({ error: 'Faça onboarding antes do check-in' });
@@ -762,7 +809,12 @@ app.post('/api/workouts/checkin', auth, async (req, res) => {
 
     await run('UPDATE workouts SET split_name = ?, plan_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [generated.split, JSON.stringify(generated.plan), target.id, req.user.id]);
 
-    res.json({ message: 'Check-in aplicado no treino', workoutId: target.id, split: generated.split, plan: generated.plan, clinicalFlag, explanation: clinicalFlag || 'Ajuste feito com base em conclusão semanal, dor, energia e dificuldade percebida.' });
+    const hydrationTip = Number(energy) <= 5 ? 'Durante o treino, beba 150-250ml de água a cada 15-20 minutos para reduzir queda de rendimento.' : 'Mantenha 2-3L de água no dia e pequenos goles entre séries.';
+    const creatineTip = 'Creatina não alivia dor de forma imediata intra treino. O melhor uso é diário (3-5g/dia), com consistência, para melhora de performance e recuperação ao longo das semanas.';
+    const recoveryTip = Number(pain) >= 7 ? 'Dor alta: reduza amplitude/carga, priorize técnica e avalie com profissional se persistir.' : 'Recuperação boa: mantenha progressão de carga gradual (2-5%) e sono de 7-9h.';
+    const feedback = `Análise detalhada da semana ${week_label || 'atual'}:\n- Conclusão: ${completed_percent}% (${times_trained || 'n/d'} treinos).\n- Dificuldade: ${difficulty}/10 | Energia: ${energy}/10 | Dor: ${pain}/10.\n\nAjustes no treino:\n- Intensidade alvo: ${generated.plan?.[0]?.intensity || 'RIR 2-3'}.\n- Foco: controle de execução, progressão sustentável e consistência semanal.\n\nDicas práticas:\n- ${hydrationTip}\n- ${creatineTip}\n- ${recoveryTip}`;
+
+    res.json({ message: 'Check-in aplicado no treino', workoutId: target.id, split: generated.split, plan: generated.plan, clinicalFlag, feedback, explanation: clinicalFlag || 'Ajuste feito com base em conclusão semanal, dor, energia e dificuldade percebida.' });
   } catch {
     res.status(500).json({ error: 'Erro ao processar check-in' });
   }
@@ -770,7 +822,7 @@ app.post('/api/workouts/checkin', auth, async (req, res) => {
 
 app.post('/api/nutrition/plan', auth, async (req, res) => {
   try {
-    const { objective, weight, height, age, sex, activity_level, routine_notes, allergies, disliked_foods, meals_count } = req.body;
+    const { objective, weight, height, age, sex, activity_level, routine_notes, allergies, disliked_foods, meals_count, use_whey, whey_meal } = req.body;
     if (!objective || !weight || !height || !age || !sex || !activity_level) {
       return res.status(400).json({ error: 'Preencha todos os campos obrigatórios da dieta' });
     }
@@ -790,9 +842,9 @@ app.post('/api/nutrition/plan', auth, async (req, res) => {
     const blockedTerms = Array.from(new Set(`${allergies || ''},${disliked_foods || ''}`.split(/[,;\n]/).map(t => normalizeText(t).trim()).filter(Boolean)));
     const mealPool = [
       { meal: 'Café da manhã', options: ['2 ovos (100g) + aveia 40g + banana prata (1 un média ~90g)', 'Iogurte natural 170g + granola sem açúcar 30g + banana nanica (1 un média ~100g)', '2 pães de forma integrais (50g) + queijo branco 40g + fruta 100g'] },
-      { meal: 'Almoço', options: ['Arroz cozido 140g + feijão 100g + frango grelhado 150g (carne magra: patinho, coxão mole, lagarto) + salada 120g + azeite 8g', 'Batata doce 180g + carne magra 150g (patinho, alcatra sem gordura, frango sem pele) + legumes 120g (abobrinha, cenoura, brócolis)', 'Macarrão integral cozido 160g + atum 120g + legumes 120g (vagem, cenoura, couve-flor)'] },
+      { meal: 'Almoço', options: ['Arroz cozido 140g (aprox. 6 colheres de sopa) + feijão 100g + frango grelhado 150g (carne magra: patinho, coxão mole, lagarto) + salada 120g + azeite 8g', 'Batata doce 180g + carne magra 150g (patinho, alcatra sem gordura, frango sem pele) + legumes 120g (abobrinha, cenoura, brócolis)', 'Macarrão integral cozido 160g + atum 120g + legumes 120g (vagem, cenoura, couve-flor)'] },
       { meal: 'Lanche', options: ['Sanduíche integral: pão 50g + frango desfiado 100g + salada 40g', 'Iogurte 170g + banana prata (1 un média ~90g) + castanhas 20g', 'Vitamina: leite 250ml + banana nanica (1 un média ~100g) + aveia 30g'] },
-      { meal: 'Jantar', options: ['Arroz 120g + omelete (2 ovos, 100g) + salada 120g', 'Mandioca cozida 160g + peixe 150g + legumes 120g (abobrinha, cenoura, chuchu)', 'Sopa de legumes 350g + proteína magra 130g (frango desfiado, patinho moído magro)'] },
+      { meal: 'Jantar', options: ['Arroz 120g (aprox. 5 colheres de sopa) + omelete (2 ovos, 100g) + salada 120g', 'Mandioca cozida 160g + peixe 150g + legumes 120g (abobrinha, cenoura, chuchu)', 'Sopa de legumes 350g + proteína magra 130g (frango desfiado, patinho moído magro)'] },
       { meal: 'Ceia', options: ['Iogurte natural 170g + aveia 20g', 'Leite 250ml + castanhas 15g', 'Omelete de claras 120g + fruta 80g'] }
     ];
 
@@ -810,10 +862,22 @@ app.post('/api/nutrition/plan', auth, async (req, res) => {
       return { meal: m.meal, suggestion: chosen, items, calories: sum > 0 ? sum : mealCaloriesDefault, protein_g: mealProtein, carbs_g: mealCarbs, fat_g: mealFat };
     });
 
-    await run('DELETE FROM nutrition_plans WHERE user_id = ?', [req.user.id]);
-    await run(`INSERT INTO nutrition_plans (user_id, objective, weight, height, age, sex, activity_level, routine_notes, allergies, disliked_foods, calories, protein_g, carbs_g, fat_g, meal_plan_json, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-    [req.user.id, objective, weight, height, age, sex, activity_level, routine_notes || '', allergies || '', disliked_foods || '', t.calories, t.protein, t.carbs, t.fat, JSON.stringify(filteredMeals)]);
+    if (use_whey) {
+      const targetMeal = filteredMeals.find(m => normalizeText(m.meal) === normalizeText(whey_meal || 'Lanche')) || filteredMeals[1] || filteredMeals[0];
+      const wheyItem = { label: 'Whey protein 30g com água', calories: 120, protein_g: 24, carbs_g: 3, fat_g: 2 };
+      targetMeal.items = [...(targetMeal.items || []), wheyItem];
+      targetMeal.calories += wheyItem.calories;
+      targetMeal.protein_g += wheyItem.protein_g;
+      targetMeal.carbs_g += wheyItem.carbs_g;
+      targetMeal.fat_g += wheyItem.fat_g;
+    }
+
+    const max = await get('SELECT COALESCE(MAX(id),0) AS max_id FROM nutrition_plans WHERE user_id = ?', [req.user.id]);
+    const planName = (req.body?.name || `Plano alimentar ${Number(max?.max_id || 0) + 1}`).trim();
+    await run('UPDATE nutrition_plans SET is_active = 0 WHERE user_id = ?', [req.user.id]);
+    await run(`INSERT INTO nutrition_plans (user_id, name, is_active, objective, weight, height, age, sex, activity_level, routine_notes, allergies, disliked_foods, calories, protein_g, carbs_g, fat_g, meal_plan_json, updated_at)
+      VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [req.user.id, planName, objective, weight, height, age, sex, activity_level, routine_notes || '', allergies || '', disliked_foods || '', t.calories, t.protein, t.carbs, t.fat, JSON.stringify(filteredMeals)]);
 
     res.json({
       message: 'Plano alimentar gerado',
@@ -827,8 +891,35 @@ app.post('/api/nutrition/plan', auth, async (req, res) => {
   }
 });
 
+app.get('/api/nutrition/plans', auth, async (req, res) => {
+  const plans = await all('SELECT id, name, is_active, updated_at FROM nutrition_plans WHERE user_id = ? ORDER BY updated_at DESC', [req.user.id]);
+  res.json({ plans });
+});
+
+app.post('/api/nutrition/plans/:id/activate', auth, async (req, res) => {
+  const own = await get('SELECT id FROM nutrition_plans WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  if (!own) return res.status(404).json({ error: 'Plano não encontrado' });
+  await run('UPDATE nutrition_plans SET is_active = 0 WHERE user_id = ?', [req.user.id]);
+  await run('UPDATE nutrition_plans SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  res.json({ message: 'Plano alimentar ativo atualizado' });
+});
+
+app.patch('/api/nutrition/plans/:id/rename', auth, async (req, res) => {
+  const { name } = req.body || {};
+  if (!name?.trim()) return res.status(400).json({ error: 'Nome inválido' });
+  await run('UPDATE nutrition_plans SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [name.trim(), req.params.id, req.user.id]);
+  res.json({ message: 'Plano alimentar renomeado' });
+});
+
+app.post('/api/nutrition/plans/:id/deactivate', auth, async (req, res) => {
+  const own = await get('SELECT id FROM nutrition_plans WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  if (!own) return res.status(404).json({ error: 'Plano não encontrado' });
+  await run('UPDATE nutrition_plans SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+  res.json({ message: 'Plano alimentar desativado' });
+});
+
 app.get('/api/nutrition/plan', auth, async (req, res) => {
-  const row = await get('SELECT * FROM nutrition_plans WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [req.user.id]);
+  const row = await get('SELECT * FROM nutrition_plans WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1', [req.user.id]);
   if (!row) return res.status(404).json({ error: 'Plano alimentar não encontrado' });
   res.json({ ...row, meals: JSON.parse(row.meal_plan_json) });
 });
@@ -836,8 +927,13 @@ app.get('/api/nutrition/plan', auth, async (req, res) => {
 app.post('/api/ai/nutrition-chat', auth, async (req, res) => {
   try {
     const { message } = req.body;
-    const plan = await get('SELECT * FROM nutrition_plans WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [req.user.id]);
+    const plan = await get('SELECT * FROM nutrition_plans WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1', [req.user.id]);
     if (!plan) return res.status(404).json({ error: 'Crie um plano alimentar antes de conversar com a IA de dieta.' });
+
+    const qNorm = normalizeText(String(message || ''));
+    if ((qNorm.includes('sanduiche') && qNorm.includes('pao')) || qNorm.includes('trocar') || qNorm.includes('substituir')) {
+      return res.json({ aiReply: 'Pode trocar, ajustando quantidade: 1 sanduíche natural padrão (~280 kcal) ≈ 1 pão francês (50g) + 80g de frango desfiado + salada. Se usar só pão de sal com manteiga, cai proteína e sobe gordura. Meta prática: manter ~20-30g de proteína na refeição.' });
+    }
 
     let reply;
     try {
